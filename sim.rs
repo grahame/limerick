@@ -92,58 +92,49 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    fn getfloat<T>(m: map::hashmap<T, str>, k: T) -> (bool, float) {
+    fn getfloat(m: map::hashmap<str, str>, k: str) -> (bool, float) {
         let v = m.get(k);
         alt float::from_str(v) {
             some(n) {
                 (true, n)
             }
             none {
+                std::io::println(#fmt("unparsable floating point field `%s' -> `%s'.", k, v));
                 (false, 0.)
             }
         }
     }
 
-    let load_agencies = fn@() -> map::hashmap<str, agency> {
-        let agencies : map::hashmap<str, agency> = map::new_str_hash();
-        file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
-            let id = getdefault(m, "agency_id", "_");
-            agencies.insert(id, {
-                name: m.get("agency_name"),
-                url: m.get("agency_url"),
-                timezone: m.get("agency_timezone")
-            });
-        };
-        ret agencies;
+    let agencies : map::hashmap<str, agency> = map::new_str_hash();
+    file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
+        let id = getdefault(m, "agency_id", "_");
+        agencies.insert(id, {
+            name: m.get("agency_name"),
+            url: m.get("agency_url"),
+            timezone: m.get("agency_timezone")
+        });
     };
 
-    let load_stops = fn@() -> map::hashmap<str, stop> {
-        let stops : map::hashmap<str, stop> = map::new_str_hash();
-        file_iter("stops.txt", ["stop_id", "stop_name", "stop_lat", "stop_lon"]) { |m|
-            let (ok, lat) = getfloat(m, "stop_lat");
-            if !ok {
-                std::io::println(#fmt("unparsable stop_lat `%s', skipping.", m.get("stop_lat")));
-                ret;
-            }
-            let (ok, lon) = getfloat(m, "stop_lon");
-            if !ok {
-                std::io::println(#fmt("unparsable stop_lon `%s', skipping.", m.get("stop_lon")));
-                ret;
-            }
-            stops.insert(m.get("stop_id"), { 
-                name : m.get("stop_name"),
-                pt : {
-                    lat : lat,
-                    lon : lon
-                }, 
-                row : m
-            });
-        };
-        ret stops;
+    let stops : map::hashmap<str, stop> = map::new_str_hash();
+    file_iter("stops.txt", ["stop_id", "stop_name", "stop_lat", "stop_lon"]) { |m|
+        let (ok, lat) = getfloat(m, "stop_lat");
+        if !ok {
+            ret;
+        }
+        let (ok, lon) = getfloat(m, "stop_lon");
+        if !ok {
+            ret;
+        }
+        stops.insert(m.get("stop_id"), { 
+            name : m.get("stop_name"),
+            pt : {
+                lat : lat,
+                lon : lon
+            }, 
+            row : m
+        });
     };
 
-    let agencies = load_agencies();
-    let stops = load_stops(); 
     ret { agencies : agencies, stops: stops };
 }
 
