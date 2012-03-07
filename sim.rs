@@ -35,7 +35,29 @@ type agency = {
     timezone: str,
     lang: option<str>,
     phone: option<str>,
-    fare_url: option<str>
+    fare_url: option<str>,
+    routes: map::hashmap<str, route>
+};
+
+enum route_type {
+    tram(),
+    subway(),
+    rail(),
+    bus(),
+    ferry(),
+    cable_car(),
+    gondola(),
+    funicular()
+}
+
+type route = {
+    short_name: str,
+    long_name: str,
+    desc: option<str>,
+    route_type: route_type,
+    url: option<str>,
+    color: option<str>,
+    text_color: option<str>
 };
 
 type point = {
@@ -136,7 +158,8 @@ fn gtfs_load(dir: str) -> feed
             timezone: m.get("agency_timezone"),
             lang: getoption(m, "agency_lang"),
             phone: getoption(m, "agency_phone"),
-            fare_url: getoption(m, "agency_fare_url")
+            fare_url: getoption(m, "agency_fare_url"),
+            routes: map::new_str_hash()
         });
     };
 
@@ -179,7 +202,34 @@ fn gtfs_load(dir: str) -> feed
             timezone: getoption(m, "stop_timezone")
         });
     };
-
+    fn get_route_type(rt: str) -> route_type {
+        alt rt {
+            "0" { tram }
+            "1" { subway }
+            "2" { rail }
+            "3" { bus }
+            "4" { ferry }
+            "5" { cable_car }
+            "6" { gondola }
+            "7" { funicular }
+            _ { fail("invalid route type") }
+        }
+    }
+    file_iter("routes.txt", ["route_id", "route_short_name", "route_long_name", "route_type"]) { |m|
+        let agency_id = getdefault(m, "agency_id", "_");
+        assert(agencies.contains_key(agency_id));
+        let agency = agencies.get(agency_id);
+        let routes = agency.routes;
+        routes.insert(m.get("route_id"), { 
+            short_name: m.get("route_short_name"),
+            long_name: m.get("route_long_name"),
+            desc: getoption(m, "route_desc"),
+            route_type: get_route_type(m.get("route_type")),
+            url: getoption(m, "route_url"),
+            color: getoption(m, "route_color"),
+            text_color: getoption(m, "route_text_color")
+        });
+    };
     ret { agencies : agencies, stops: stops };
 }
 
