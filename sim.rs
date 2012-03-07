@@ -32,7 +32,10 @@ iface feedaccess {
 type agency = {
     name: str,
     url: str,
-    timezone: str
+    timezone: str,
+    lang: option<str>,
+    phone: option<str>,
+    fare_url: option<str>
 };
 
 type point = {
@@ -40,10 +43,21 @@ type point = {
     lon : float
 };
 
+enum location_type {
+    location_stop(),
+    location_station()
+}
+
 type stop = {
+    code: option<str>,
     name: str,
     pt: point,
-    row: row
+    desc: option<str>,
+    zone_id: option<str>,
+    url: option<str>,
+    location_type: option<location_type>,
+    parent_station: option<str>,
+    timezone: option<str>
 };
 
 fn gtfs_load(dir: str) -> feed
@@ -92,6 +106,14 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
+    fn getoption<T,U>(m: map::hashmap<T, U>, k: T) -> option<U> {
+        if m.contains_key(k) {
+            some(m.get(k))
+        } else {
+            none
+        }
+    }
+
     fn getfloat(m: map::hashmap<str, str>, k: str) -> (bool, float) {
         let v = m.get(k);
         alt float::from_str(v) {
@@ -111,11 +133,28 @@ fn gtfs_load(dir: str) -> feed
         agencies.insert(id, {
             name: m.get("agency_name"),
             url: m.get("agency_url"),
-            timezone: m.get("agency_timezone")
+            timezone: m.get("agency_timezone"),
+            lang: getoption(m, "agency_lang"),
+            phone: getoption(m, "agency_phone"),
+            fare_url: getoption(m, "agency_fare_url")
         });
     };
 
     let stops : map::hashmap<str, stop> = map::new_str_hash();
+    fn get_location_type(loc: option<str>) -> option<location_type> {
+        alt loc {
+            some(s) {
+                if s == "" || s == "0" {
+                    some(location_stop)
+                } else if s == "1" {
+                    some(location_station)
+                } else {
+                    fail("impossible location")
+                }
+            }
+            none { none }
+        }
+    }
     file_iter("stops.txt", ["stop_id", "stop_name", "stop_lat", "stop_lon"]) { |m|
         let (ok, lat) = getfloat(m, "stop_lat");
         if !ok {
@@ -126,12 +165,18 @@ fn gtfs_load(dir: str) -> feed
             ret;
         }
         stops.insert(m.get("stop_id"), { 
+            code: getoption(m, "stop_code"),
             name : m.get("stop_name"),
             pt : {
                 lat : lat,
                 lon : lon
             }, 
-            row : m
+            desc: getoption(m, "stop_desc"),
+            zone_id: getoption(m, "zone_id"),
+            url: getoption(m, "stop_url"),
+            location_type: get_location_type(getoption(m, "location_type")),
+            parent_station: getoption(m, "parent_station"),
+            timezone: getoption(m, "stop_timezone")
         });
     };
 
