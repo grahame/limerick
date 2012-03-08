@@ -1,6 +1,7 @@
 
 use std;
 import std::map;
+import map::hashmap;
 use csv;
 import csv::rowreader;
 import csv::{rowaccess,rowiter};
