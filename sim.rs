@@ -27,11 +27,6 @@ type feed = {
     trips: map::hashmap<str, trip>
 };
 
-iface feedaccess {
-    fn nagencies() -> uint;
-    fn nstops() -> uint;
-}
-
 type agency = {
     name: str,
     url: str,
@@ -279,14 +274,24 @@ fn gtfs_load(dir: str) -> feed
     };
 }
 
+iface feedaccess {
+    fn nagencies() -> uint;
+    fn nstops() -> uint;
+    fn nroutes() -> uint;
+    fn ntrips() -> uint;
+}
+
 impl of feedaccess for feed {
     fn nagencies() -> uint { self.agencies.size() }
     fn nstops() -> uint { self.stops.size() }
+    fn nroutes() -> uint { self.routes.size() }
+    fn ntrips() -> uint { self.trips.size() }
 }
 
 fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
-    std::io::println(#fmt("<< loaded %u agencies, %u stops >>", feed.nagencies(), feed.nstops()));
+    std::io::println(#fmt("<< loaded %u agencies, %u stops, %u routes, %u trips >>",
+                feed.nagencies(), feed.nstops(), feed.nroutes(), feed.ntrips()));
 }
 
