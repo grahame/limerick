@@ -11,7 +11,7 @@ import csv::{rowaccess,rowiter};
 
    [ Agency ]
      -> Routes
-       -> Trips [ for a Service ]
+     -> Trips [ for a Service ]
          -> Stop Times
      -> Calendar [ for a Service]
      -> CalendarDates [ for a Service ]
@@ -22,7 +22,9 @@ type row = map::hashmap<str, str>;
 
 type feed = {
     agencies: map::hashmap<str, agency>, 
-    stops : map::hashmap<str, stop>
+    stops : map::hashmap<str, stop>,
+    routes: map::hashmap<str, route>,
+    trips: map::hashmap<str, trip>
 };
 
 iface feedaccess {
@@ -37,7 +39,6 @@ type agency = {
     lang: option<str>,
     phone: option<str>,
     fare_url: option<str>,
-    routes: map::hashmap<str, route>
 };
 
 enum route_type {
@@ -52,13 +53,14 @@ enum route_type {
 }
 
 type route = {
+    agency_id: str,
     short_name: str,
     long_name: str,
     desc: option<str>,
     route_type: route_type,
     url: option<str>,
     color: option<str>,
-    text_color: option<str>
+    text_color: option<str>,
 };
 
 type point = {
@@ -81,6 +83,21 @@ type stop = {
     location_type: option<location_type>,
     parent_station: option<str>,
     timezone: option<str>
+};
+
+enum direction {
+    oneway(),
+    theotherway()
+}
+
+type trip = {
+    route_id: str,
+    service_id: str,
+    headsign: option<str>,
+    short_name: option<str>,
+    direction: option<direction>,
+    block_id: option<str>,
+    shape_id: option<str>
 };
 
 fn gtfs_load(dir: str) -> feed
@@ -160,7 +177,6 @@ fn gtfs_load(dir: str) -> feed
             lang: getoption(m, "agency_lang"),
             phone: getoption(m, "agency_phone"),
             fare_url: getoption(m, "agency_fare_url"),
-            routes: map::new_str_hash()
         });
     };
 
@@ -216,12 +232,10 @@ fn gtfs_load(dir: str) -> feed
             _ { fail("invalid route type") }
         }
     }
+    let routes : map::hashmap<str, route> = map::new_str_hash();
     file_iter("routes.txt", ["route_id", "route_short_name", "route_long_name", "route_type"]) { |m|
-        let agency_id = getdefault(m, "agency_id", "_");
-        assert(agencies.contains_key(agency_id));
-        let agency = agencies.get(agency_id);
-        let routes = agency.routes;
         routes.insert(m.get("route_id"), { 
+            agency_id: getdefault(m, "agency_id", "_"),
             short_name: m.get("route_short_name"),
             long_name: m.get("route_long_name"),
             desc: getoption(m, "route_desc"),
@@ -231,7 +245,38 @@ fn gtfs_load(dir: str) -> feed
             text_color: getoption(m, "route_text_color")
         });
     };
-    ret { agencies : agencies, stops: stops };
+    fn getdirection(d: option<str>) -> option<direction> {
+        alt d {
+            some(s) {
+                alt(s) {
+                    "0" { some(oneway) }
+                    "1" { some(theotherway) }
+                    _   { fail("invalid direction_id") }
+                }
+            }
+            none { 
+                none
+            }
+        }
+    }
+    let trips : map::hashmap<str, trip> = map::new_str_hash();
+    file_iter("trips.txt", ["route_id", "service_id", "trip_id"]) { |m|
+        trips.insert(m.get("trip_id"), {
+            route_id: m.get("route_id"),
+            service_id: m.get("service_id"),
+            headsign: getoption(m, "trip_headsign"),
+            short_name: getoption(m, "trip_short_name"),
+            direction: getdirection(getoption(m, "direction_id")),
+            block_id: getoption(m, "block_id"),
+            shape_id: getoption(m, "shape_id")
+        });
+    };
+    ret {
+        agencies : agencies,
+        stops: stops,
+        routes: routes, 
+        trips: trips
+    };
 }
 
 impl of feedaccess for feed {
@@ -242,9 +287,6 @@ impl of feedaccess for feed {
 fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
-    feed.agencies.items() { | id, agency | 
-        std::io::println(#fmt("%s:%s, %u routes", id, agency.name, agency.routes.size()));
-    }
     std::io::println(#fmt("<< loaded %u agencies, %u stops >>", feed.nagencies(), feed.nstops()));
 }
 
