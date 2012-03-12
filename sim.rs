@@ -25,7 +25,7 @@ type feed = {
     stops : map::hashmap<str, stop>,
     routes: map::hashmap<str, route>,
     trips: map::hashmap<str, trip>,
-    //stop_times: map::hashmap<str, stop_time>
+    stop_times: map::hashmap<str, stop_time>
 };
 
 type agency = {
@@ -100,6 +100,30 @@ type trip = {
     shape_id: option<str>
 };
 
+enum time {
+    unspecified(),
+    relnoon(uint)
+}
+
+enum marshal {
+    scheduled(),
+    nopickup(),
+    phoneahead(),
+    coordinatewithdriver()
+}
+
+type stop_time = {
+    trip_id: str,
+    arrival_time: time,
+    departure_time: time,
+    stop_id: str,
+    sequence: uint,
+    headsign: option<str>,
+    pick_up_type: option<marshal>,
+    drop_off_type: option<marshal>,
+    shape_dist_travelled: option<float>
+};
+
 fn gtfs_load(dir: str) -> feed
 {
     let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::t<uint, str> {
@@ -171,7 +195,7 @@ fn gtfs_load(dir: str) -> feed
     file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
         let id = getdefault(m, "agency_id", "_");
         agencies.insert(id, {
-            id: id,
+            id: getdefault(m, "agency_id", "_"),
             name: m.get("agency_name"),
             url: m.get("agency_url"),
             timezone: m.get("agency_timezone"),
@@ -275,11 +299,17 @@ fn gtfs_load(dir: str) -> feed
             shape_id: getoption(m, "shape_id")
         });
     };
+    let stop_times : map::hashmap<str, stop_time> = map::new_str_hash();
+    file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
+        1;
+    };
+
     ret {
         agencies : agencies,
         stops: stops,
         routes: routes, 
-        trips: trips
+        trips: trips,
+        stop_times: stop_times
     };
 }
 
