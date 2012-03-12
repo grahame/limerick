@@ -24,10 +24,12 @@ type feed = {
     agencies: map::hashmap<str, agency>, 
     stops : map::hashmap<str, stop>,
     routes: map::hashmap<str, route>,
-    trips: map::hashmap<str, trip>
+    trips: map::hashmap<str, trip>,
+    //stop_times: map::hashmap<str, stop_time>
 };
 
 type agency = {
+    id: str,
     name: str,
     url: str,
     timezone: str,
@@ -48,6 +50,7 @@ enum route_type {
 }
 
 type route = {
+    id: str,
     agency_id: str,
     short_name: str,
     long_name: str,
@@ -69,6 +72,7 @@ enum location_type {
 }
 
 type stop = {
+    id: str,
     code: option<str>,
     name: str,
     pt: point,
@@ -86,6 +90,7 @@ enum direction {
 }
 
 type trip = {
+    id: str,
     route_id: str,
     service_id: str,
     headsign: option<str>,
@@ -166,6 +171,7 @@ fn gtfs_load(dir: str) -> feed
     file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
         let id = getdefault(m, "agency_id", "_");
         agencies.insert(id, {
+            id: id,
             name: m.get("agency_name"),
             url: m.get("agency_url"),
             timezone: m.get("agency_timezone"),
@@ -200,6 +206,7 @@ fn gtfs_load(dir: str) -> feed
             ret;
         }
         stops.insert(m.get("stop_id"), { 
+            id: m.get("stop_id"), 
             code: getoption(m, "stop_code"),
             name : m.get("stop_name"),
             pt : {
@@ -230,6 +237,7 @@ fn gtfs_load(dir: str) -> feed
     let routes : map::hashmap<str, route> = map::new_str_hash();
     file_iter("routes.txt", ["route_id", "route_short_name", "route_long_name", "route_type"]) { |m|
         routes.insert(m.get("route_id"), { 
+            id: m.get("route_id"), 
             agency_id: getdefault(m, "agency_id", "_"),
             short_name: m.get("route_short_name"),
             long_name: m.get("route_long_name"),
@@ -257,6 +265,7 @@ fn gtfs_load(dir: str) -> feed
     let trips : map::hashmap<str, trip> = map::new_str_hash();
     file_iter("trips.txt", ["route_id", "service_id", "trip_id"]) { |m|
         trips.insert(m.get("trip_id"), {
+            id: m.get("trip_id"),
             route_id: m.get("route_id"),
             service_id: m.get("service_id"),
             headsign: getoption(m, "trip_headsign"),
