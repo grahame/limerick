@@ -242,6 +242,9 @@ impl of feedaccess for feed {
 fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
-    std::io::println(#fmt("<gtfs> loaded %u agencies, %u stops.", feed.nagencies(), feed.nstops()));
+    feed.agencies.items() { | id, agency | 
+        std::io::println(#fmt("%s:%s, %u routes", id, agency.name, agency.routes.size()));
+    }
+    std::io::println(#fmt("<< loaded %u agencies, %u stops >>", feed.nagencies(), feed.nstops()));
 }
 
