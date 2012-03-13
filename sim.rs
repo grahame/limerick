@@ -415,8 +415,44 @@ fn gtfs_load(dir: str) -> feed
         });
     };
     let calendars : map::hashmap<str, calendar> = map::new_str_hash();
+    fn getbool(s: str) -> bool {
+        alt(s) {
+            "0" { false }
+            "1" { true }
+            _   { fail("invalid boolean value") }
+        }
+    }
+    fn getdate(s: str) -> date {
+        fn usub(s: str, offset: uint, len: uint) -> uint {
+            alt uint::from_str(str::substr(s, 0u, 4u)) {
+                some(f) { f }
+                none { fail("invalid year code") }
+            }
+        }
+        let year = usub(s, 0u, 4u);
+        let month = usub(s, 4u, 2u);
+        let day = usub(s, 6u, 2u);
+        assert(month <= 12u);
+        assert(day <= 31u);
+        {
+            day: day,
+            month: month,
+            year: year,
+        }
+    }
     file_iter("calendar.txt", ["service_id", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]) { |m| 
-
+        calendars.insert(m.get("service_id"), {
+            service_id: m.get("service_id"),
+            monday: getbool(m.get("monday")),
+            tuesday: getbool(m.get("tuesday")),
+            wednesday: getbool(m.get("wednesday")),
+            thursday: getbool(m.get("thursday")),
+            friday: getbool(m.get("friday")),
+            saturday: getbool(m.get("saturday")),
+            sunday: getbool(m.get("sunday")),
+            start_date: getdate(m.get("start_date")),
+            end_date: getdate(m.get("end_date"))
+        });
     };
     let calendar_dates : map::hashmap<str, calendar_date> = map::new_str_hash();
     ret {
