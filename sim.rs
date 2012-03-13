@@ -424,7 +424,7 @@ fn gtfs_load(dir: str) -> feed
     }
     fn getdate(s: str) -> date {
         fn usub(s: str, offset: uint, len: uint) -> uint {
-            alt uint::from_str(str::substr(s, 0u, 4u)) {
+            alt uint::from_str(str::substr(s, offset, len)) {
                 some(f) { f }
                 none { fail("invalid year code") }
             }
