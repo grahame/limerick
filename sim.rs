@@ -124,6 +124,36 @@ type stop_time = {
     shape_dist_travelled: option<float>
 };
 
+type date = {
+    day: uint,
+    month: uint,
+    year: uint
+};
+
+type calendar = {
+    service_id: str,
+    monday: bool,
+    tuesday: bool,
+    wednesday: bool,
+    thursday: bool,
+    friday: bool, 
+    saturday: bool,
+    sunday: bool,
+    start_date: date,
+    end_date: date
+};
+
+enum exception {
+    service_added(),
+    service_removed()
+}
+
+type calendar_dates = {
+    service_id: str,
+    date: date,
+    exception_type: exception
+};
+
 fn gtfs_load(dir: str) -> feed
 {
     let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::t<uint, str> {
