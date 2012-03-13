@@ -25,7 +25,9 @@ type feed = {
     stops : map::hashmap<str, stop>,
     routes: map::hashmap<str, route>,
     trips: map::hashmap<str, trip>,
-    stop_times: map::hashmap<str, stop_time>
+    stop_times: map::hashmap<str, stop_time>,
+    calendars: map::hashmap<str, calendar>,
+    calendar_dates: map::hashmap<str, calendar_date>,
 };
 
 type agency = {
@@ -148,7 +150,7 @@ enum exception {
     service_removed()
 }
 
-type calendar_dates = {
+type calendar_date = {
     service_id: str,
     date: date,
     exception_type: exception
@@ -330,7 +332,6 @@ fn gtfs_load(dir: str) -> feed
         });
     };
     fn gettime(s: str) -> time {
-        /*
         if s == "" {
             unspecified
         } else {
@@ -339,12 +340,52 @@ fn gtfs_load(dir: str) -> feed
                 fail("incorrect time component length");
             }
             let lens = vec::map(tc, {|t| str::len(t)});
+            assert(lens[0] == 1u || lens[0] == 2u);
+            assert(lens[1] == 2u);
+            assert(lens[2] == 2u);
+            let secs = 0u;
+            alt uint::from_str(tc[0]) {
+                some(v) {
+                    secs += v * 3600u;
+                }
+                _ {
+                    fail("invalid hour");
+                }
+            }
+            fn minsec(s: str) -> uint {
+                alt uint::from_str(s) {
+                    some(v) {
+                        if v > 59u {
+                            fail("invalid minute");
+                        } else {
+                            v
+                        }
+                    }
+                    _ {
+                        fail("invalid minute");
+                    }
+                }
+            }
+            secs += minsec(tc[1]) * 60u;
+            secs += minsec(tc[2]);
+            relnoon(secs)
         }
-        */
-        unspecified
     }
     fn getmarshal(s: option<str>) -> option<marshal> {
-        none
+        alt s {
+            some(v) {
+                alt v {
+                    "0" { some(scheduled) }
+                    "1" { some(nopickup) }
+                    "2" { some(phoneahead) }
+                    "3" { some(coordinatewithdriver) }
+                    _ { fail("unknown marshal type") }
+                }
+            }
+            none {
+                none
+            }
+        }
     }
     let stop_times : map::hashmap<str, stop_time> = map::new_str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
@@ -373,13 +414,19 @@ fn gtfs_load(dir: str) -> feed
             }
         });
     };
+    let calendars : map::hashmap<str, calendar> = map::new_str_hash();
+    file_iter("calendar.txt", ["service_id", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]) { |m| 
 
+    };
+    let calendar_dates : map::hashmap<str, calendar_date> = map::new_str_hash();
     ret {
         agencies : agencies,
         stops: stops,
         routes: routes, 
         trips: trips,
-        stop_times: stop_times
+        stop_times: stop_times,
+        calendars: calendars,
+        calendar_dates: calendar_dates
     };
 }
 
