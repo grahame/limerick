@@ -119,7 +119,7 @@ type stop_time = {
     stop_id: str,
     sequence: uint,
     headsign: option<str>,
-    pick_up_type: option<marshal>,
+    pickup_type: option<marshal>,
     drop_off_type: option<marshal>,
     shape_dist_travelled: option<float>
 };
@@ -127,8 +127,8 @@ type stop_time = {
 fn gtfs_load(dir: str) -> feed
 {
     let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::t<uint, str> {
-        let path = std::fs::connect(dir, fname);
-        let res = std::io::file_reader(path);
+        let path = path::connect(dir, fname);
+        let res = io::file_reader(path);
         if result::failure(res) {
             ret result::err(result::get_err(res));
         }
@@ -155,10 +155,10 @@ fn gtfs_load(dir: str) -> feed
     };
 
     fn dump_row(m: map::hashmap<str, str>) {
-        std::io::println("");
+        io::println("");
         m.keys() { |k| 
             let v = m.get(k);
-            std::io::println(#fmt("'%s' -> %s", k, v));
+            io::println(#fmt("'%s' -> %s", k, v));
         }
     }
 
@@ -185,7 +185,7 @@ fn gtfs_load(dir: str) -> feed
                 (true, n)
             }
             none {
-                std::io::println(#fmt("unparsable floating point field `%s' -> `%s'.", k, v));
+                io::println(#fmt("unparsable floating point field `%s' -> `%s'.", k, v));
                 (false, 0.)
             }
         }
@@ -299,9 +299,49 @@ fn gtfs_load(dir: str) -> feed
             shape_id: getoption(m, "shape_id")
         });
     };
+    fn gettime(s: str) -> time {
+        /*
+        if s == "" {
+            unspecified
+        } else {
+            let tc : [str] = str::split_char(s, ':');
+            if vec::len(tc) != 3u {
+                fail("incorrect time component length");
+            }
+            let lens = vec::map(tc, {|t| str::len(t)});
+        }
+        */
+        unspecified
+    }
+    fn getmarshal(s: option<str>) -> option<marshal> {
+        none
+    }
     let stop_times : map::hashmap<str, stop_time> = map::new_str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
-        1;
+        stop_times.insert(m.get("trip_id"), {
+            trip_id: m.get("trip_id"),
+            arrival_time: gettime(m.get("arrival_time")),
+            departure_time: gettime(m.get("departure_time")),
+            stop_id: m.get("stop_id"),
+            sequence: alt uint::from_str(m.get("stop_sequence")) {
+                some(v) { v }
+                _ {
+                    fail("invalid stop_sequence")
+                }
+            },
+            headsign: getoption(m, "stop_headsign"),
+            pickup_type: getmarshal(getoption(m, "pickup_type")),
+            drop_off_type: getmarshal(getoption(m, "drop_off_type")),
+            shape_dist_travelled: alt getoption(m, "shape_dist_travelled") {
+                some(s) {
+                    alt float::from_str(s) {
+                        some(f) { some(f) }
+                        none { fail("invalid shape_dist_travelled") }
+                    }
+                }
+                none { none }
+            }
+        });
     };
 
     ret {
@@ -330,7 +370,7 @@ impl of feedaccess for feed {
 fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
-    std::io::println(#fmt("<< loaded %u agencies, %u stops, %u routes, %u trips >>",
+    io::println(#fmt("<< loaded %u agencies, %u stops, %u routes, %u trips >>",
                 feed.nagencies(), feed.nstops(), feed.nroutes(), feed.ntrips()));
 }
 
