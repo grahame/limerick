@@ -2,7 +2,7 @@
 
 c()
 {
-    rustc -g -L ../rust-csv/ $*
+    rustc -L ../rust-csv/ $*
 }
 
 c ../rust-csv/csv.rc &&

@@ -158,7 +158,7 @@ type calendar_date = {
 
 fn gtfs_load(dir: str) -> feed
 {
-    let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::t<uint, str> {
+    let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::result<uint, str> {
         let path = path::connect(dir, fname);
         let res = io::file_reader(path);
         if result::failure(res) {
@@ -194,7 +194,7 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    fn getdefault<T, U : copy>(m: map::hashmap<T, U>, k: T, def: U) -> U {
+    fn getdefault<T: copy, U : copy>(m: map::hashmap<T, U>, k: T, def: U) -> U {
         if m.contains_key(k) {
             m.get(k)
         } else {
@@ -202,7 +202,7 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    fn getoption<T,U>(m: map::hashmap<T, U>, k: T) -> option<U> {
+    fn getoption<T: copy,U: copy>(m: map::hashmap<T, U>, k: T) -> option<U> {
         if m.contains_key(k) {
             some(m.get(k))
         } else {
@@ -223,7 +223,7 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    let agencies : map::hashmap<str, agency> = map::new_str_hash();
+    let agencies : map::hashmap<str, agency> = map::str_hash();
     file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
         let id = getdefault(m, "agency_id", "_");
         agencies.insert(id, {
@@ -237,7 +237,7 @@ fn gtfs_load(dir: str) -> feed
         });
     };
 
-    let stops : map::hashmap<str, stop> = map::new_str_hash();
+    let stops : map::hashmap<str, stop> = map::str_hash();
     fn get_location_type(loc: option<str>) -> option<location_type> {
         alt loc {
             some(s) {
@@ -290,7 +290,7 @@ fn gtfs_load(dir: str) -> feed
             _ { fail("invalid route type") }
         }
     }
-    let routes : map::hashmap<str, route> = map::new_str_hash();
+    let routes : map::hashmap<str, route> = map::str_hash();
     file_iter("routes.txt", ["route_id", "route_short_name", "route_long_name", "route_type"]) { |m|
         routes.insert(m.get("route_id"), { 
             id: m.get("route_id"), 
@@ -318,7 +318,7 @@ fn gtfs_load(dir: str) -> feed
             }
         }
     }
-    let trips : map::hashmap<str, trip> = map::new_str_hash();
+    let trips : map::hashmap<str, trip> = map::str_hash();
     file_iter("trips.txt", ["route_id", "service_id", "trip_id"]) { |m|
         trips.insert(m.get("trip_id"), {
             id: m.get("trip_id"),
@@ -387,7 +387,7 @@ fn gtfs_load(dir: str) -> feed
             }
         }
     }
-    let stop_times : map::hashmap<str, stop_time> = map::new_str_hash();
+    let stop_times : map::hashmap<str, stop_time> = map::str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
         stop_times.insert(m.get("trip_id"), {
             trip_id: m.get("trip_id"),
@@ -414,7 +414,7 @@ fn gtfs_load(dir: str) -> feed
             }
         });
     };
-    let calendars : map::hashmap<str, calendar> = map::new_str_hash();
+    let calendars : map::hashmap<str, calendar> = map::str_hash();
     fn getbool(s: str) -> bool {
         alt(s) {
             "0" { false }
@@ -454,7 +454,7 @@ fn gtfs_load(dir: str) -> feed
             end_date: getdate(m.get("end_date"))
         });
     };
-    let calendar_dates : map::hashmap<str, calendar_date> = map::new_str_hash();
+    let calendar_dates : map::hashmap<str, calendar_date> = map::str_hash();
     ret {
         agencies : agencies,
         stops: stops,
