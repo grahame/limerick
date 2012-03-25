@@ -1,8 +1,10 @@
 #!/bin/bash -x
 
+extra=$*
+
 c()
 {
-    rustc -L ../rust-csv/ $*
+    rustc -g $extra -L ../rust-csv/ $*
 }
 
 c ../rust-csv/csv.rc &&

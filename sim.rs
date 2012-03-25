@@ -165,11 +165,11 @@ fn gtfs_load(dir: str) -> feed
             ret result::err(result::get_err(res));
         }
         let r = csv::new_reader(result::get(res), ',', '"');
-        let nrows = 0u;
-        let cols_ok = true;
+        let mut nrows = 0u;
+        let mut cols_ok = true;
         let cols_check = fn@(cols: [str]) -> bool {
-            let ok = true;
-            let i = 0u;
+            let mut ok = true;
+            let mut i = 0u;
             while i < vec::len(reqd) {
                 ok = ok && vec::contains(cols, reqd[i]);
                 i += 1u;
@@ -194,7 +194,7 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    fn getdefault<T: copy, U : copy>(m: map::hashmap<T, U>, k: T, def: U) -> U {
+    fn getdefault<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, def: U) -> U {
         if m.contains_key(k) {
             m.get(k)
         } else {
@@ -202,12 +202,16 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    fn getoption<T: copy,U: copy>(m: map::hashmap<T, U>, k: T) -> option<U> {
+    fn getoption<T: copy, U: copy>(m: map::hashmap<T, U>, k: T) -> option<U> {
         if m.contains_key(k) {
             some(m.get(k))
         } else {
             none
         }
+    }
+
+    fn no_overwrite<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, v: U) {
+        m.insert(k, v);
     }
 
     fn getfloat(m: map::hashmap<str, str>, k: str) -> (bool, float) {
@@ -226,7 +230,7 @@ fn gtfs_load(dir: str) -> feed
     let agencies : map::hashmap<str, agency> = map::str_hash();
     file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
         let id = getdefault(m, "agency_id", "_");
-        agencies.insert(id, {
+        no_overwrite(agencies, id, {
             id: getdefault(m, "agency_id", "_"),
             name: m.get("agency_name"),
             url: m.get("agency_url"),
@@ -261,7 +265,7 @@ fn gtfs_load(dir: str) -> feed
         if !ok {
             ret;
         }
-        stops.insert(m.get("stop_id"), { 
+        no_overwrite(stops, m.get("stop_id"), { 
             id: m.get("stop_id"), 
             code: getoption(m, "stop_code"),
             name : m.get("stop_name"),
@@ -292,7 +296,7 @@ fn gtfs_load(dir: str) -> feed
     }
     let routes : map::hashmap<str, route> = map::str_hash();
     file_iter("routes.txt", ["route_id", "route_short_name", "route_long_name", "route_type"]) { |m|
-        routes.insert(m.get("route_id"), { 
+        no_overwrite(routes, m.get("route_id"), { 
             id: m.get("route_id"), 
             agency_id: getdefault(m, "agency_id", "_"),
             short_name: m.get("route_short_name"),
@@ -320,7 +324,7 @@ fn gtfs_load(dir: str) -> feed
     }
     let trips : map::hashmap<str, trip> = map::str_hash();
     file_iter("trips.txt", ["route_id", "service_id", "trip_id"]) { |m|
-        trips.insert(m.get("trip_id"), {
+        no_overwrite(trips, m.get("trip_id"), {
             id: m.get("trip_id"),
             route_id: m.get("route_id"),
             service_id: m.get("service_id"),
@@ -343,7 +347,7 @@ fn gtfs_load(dir: str) -> feed
             assert(lens[0] == 1u || lens[0] == 2u);
             assert(lens[1] == 2u);
             assert(lens[2] == 2u);
-            let secs = 0u;
+            let mut secs = 0u;
             alt uint::from_str(tc[0]) {
                 some(v) {
                     secs += v * 3600u;
@@ -389,7 +393,7 @@ fn gtfs_load(dir: str) -> feed
     }
     let stop_times : map::hashmap<str, stop_time> = map::str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
-        stop_times.insert(m.get("trip_id"), {
+        no_overwrite(stop_times, m.get("trip_id"), {
             trip_id: m.get("trip_id"),
             arrival_time: gettime(m.get("arrival_time")),
             departure_time: gettime(m.get("departure_time")),
@@ -441,7 +445,7 @@ fn gtfs_load(dir: str) -> feed
         }
     }
     file_iter("calendar.txt", ["service_id", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]) { |m| 
-        calendars.insert(m.get("service_id"), {
+        no_overwrite(calendars, m.get("service_id"), {
             service_id: m.get("service_id"),
             monday: getbool(m.get("monday")),
             tuesday: getbool(m.get("tuesday")),
@@ -454,7 +458,23 @@ fn gtfs_load(dir: str) -> feed
             end_date: getdate(m.get("end_date"))
         });
     };
+    fn get_exception(s: str) -> exception {
+        alt s {
+            "1" { service_added }
+            "2" { service_removed }
+            _ { fail }
+        }
+    }
     let calendar_dates : map::hashmap<str, calendar_date> = map::str_hash();
+    file_iter("calendar_dates.txt", ["service_id", "date", "exception_type"]) { |m| 
+        no_overwrite(calendar_dates, m.get("service_id"), {
+            service_id: m.get("service_id"),
+            date: getdate(m.get("date")),
+            exception_type: get_exception(m.get("exception_type"))
+        });
+    };
+
+
     ret {
         agencies : agencies,
         stops: stops,
@@ -471,6 +491,10 @@ iface feedaccess {
     fn nstops() -> uint;
     fn nroutes() -> uint;
     fn ntrips() -> uint;
+    fn nstop_times() -> uint;
+    fn ncalendars() -> uint;
+    fn ncalendar_dates() -> uint;
+    fn describe() -> str;
 }
 
 impl of feedaccess for feed {
@@ -478,12 +502,19 @@ impl of feedaccess for feed {
     fn nstops() -> uint { self.stops.size() }
     fn nroutes() -> uint { self.routes.size() }
     fn ntrips() -> uint { self.trips.size() }
+    fn nstop_times() -> uint { self.stop_times.size() }
+    fn ncalendars() -> uint { self.calendars.size() }
+    fn ncalendar_dates() -> uint { self.calendar_dates.size() }
+    fn describe() -> str {
+        #fmt("%u agencies, %u stops, %u routes, %u trips, %u stop_times, %u calendars, %u calendar_dates",
+            self.nagencies(), self.nstops(), self.nroutes(), self.ntrips(), self.nstop_times(),
+            self.ncalendars(), self.ncalendar_dates())
+    }
 }
 
 fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
-    io::println(#fmt("<< loaded %u agencies, %u stops, %u routes, %u trips >>",
-                feed.nagencies(), feed.nstops(), feed.nroutes(), feed.ntrips()));
+    io::println(feed.describe());
 }
 
