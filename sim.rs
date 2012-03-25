@@ -4,7 +4,7 @@ import std::map;
 import map::hashmap;
 use csv;
 import csv::rowreader;
-import csv::{rowaccess,rowiter};
+import csv::{rowiter};
 
 
 /* we want to build these higher-level concepts;
@@ -159,6 +159,7 @@ type calendar_date = {
 fn gtfs_load(dir: str) -> feed
 {
     let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::result<uint, str> {
+        io::println("loading file: " + fname);
         let path = path::connect(dir, fname);
         let res = io::file_reader(path);
         if result::failure(res) {
@@ -170,8 +171,8 @@ fn gtfs_load(dir: str) -> feed
         let cols_check = fn@(cols: [str]) -> bool {
             let mut ok = true;
             let mut i = 0u;
-            while i < vec::len(reqd) {
-                ok = ok && vec::contains(cols, reqd[i]);
+            vec::iter(reqd) { |r|
+                ok = ok && vec::contains(cols, r);
                 i += 1u;
             }
             ret ok;
@@ -211,7 +212,10 @@ fn gtfs_load(dir: str) -> feed
     }
 
     fn no_overwrite<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, v: U) {
-        m.insert(k, v);
+        //log(error, (k, v));
+        let ck = k;
+        let cv = v;
+        m.insert(ck, cv);
     }
 
     fn getfloat(m: map::hashmap<str, str>, k: str) -> (bool, float) {
@@ -265,7 +269,7 @@ fn gtfs_load(dir: str) -> feed
         if !ok {
             ret;
         }
-        no_overwrite(stops, m.get("stop_id"), { 
+        no_overwrite(stops, m.get("stop_id"), {
             id: m.get("stop_id"), 
             code: getoption(m, "stop_code"),
             name : m.get("stop_name"),
