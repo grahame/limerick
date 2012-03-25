@@ -215,7 +215,10 @@ fn gtfs_load(dir: str) -> feed
         //log(error, (k, v));
         let ck = k;
         let cv = v;
-        m.insert(ck, cv);
+        if ! m.insert(ck, cv) {
+            log(error, ("duplicate key", k));
+            fail;
+        }
     }
 
     fn getfloat(m: map::hashmap<str, str>, k: str) -> (bool, float) {
@@ -491,28 +494,14 @@ fn gtfs_load(dir: str) -> feed
 }
 
 iface feedaccess {
-    fn nagencies() -> uint;
-    fn nstops() -> uint;
-    fn nroutes() -> uint;
-    fn ntrips() -> uint;
-    fn nstop_times() -> uint;
-    fn ncalendars() -> uint;
-    fn ncalendar_dates() -> uint;
     fn describe() -> str;
 }
 
 impl of feedaccess for feed {
-    fn nagencies() -> uint { self.agencies.size() }
-    fn nstops() -> uint { self.stops.size() }
-    fn nroutes() -> uint { self.routes.size() }
-    fn ntrips() -> uint { self.trips.size() }
-    fn nstop_times() -> uint { self.stop_times.size() }
-    fn ncalendars() -> uint { self.calendars.size() }
-    fn ncalendar_dates() -> uint { self.calendar_dates.size() }
     fn describe() -> str {
         #fmt("%u agencies, %u stops, %u routes, %u trips, %u stop_times, %u calendars, %u calendar_dates",
-            self.nagencies(), self.nstops(), self.nroutes(), self.ntrips(), self.nstop_times(),
-            self.ncalendars(), self.ncalendar_dates())
+            self.agencies.size(), self.stops.size(), self.routes.size(), self.trips.size(), self.stop_times.size(),
+            self.calendars.size(), self.calendar_dates.size())
     }
 }
 
