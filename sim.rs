@@ -25,7 +25,7 @@ type feed = {
     stops : map::hashmap<str, stop>,
     routes: map::hashmap<str, route>,
     trips: map::hashmap<str, trip>,
-    stop_times: map::hashmap<str, stop_time>,
+    stop_times: map::hashmap<str, [ stop_time ]>,
     calendars: map::hashmap<str, calendar>,
     calendar_dates: map::hashmap<str, calendar_date>,
 };
@@ -216,7 +216,7 @@ fn gtfs_load(dir: str) -> feed
         //let ck = k;
         //let cv = v;
         if ! m.insert(k, v) {
-            log(error, ("duplicate key", k));
+            log(error, ("no_overwrite: duplicate key", k));
             fail;
         }
     }
@@ -403,19 +403,25 @@ fn gtfs_load(dir: str) -> feed
             }
         }
     }
-    let stop_times : map::hashmap<str, stop_time> = map::str_hash();
+    let stop_times : map::hashmap<str, [ stop_time ] > = map::str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
-        no_overwrite(stop_times, m.get("trip_id"), {
+        let seq = alt uint::from_str(m.get("stop_sequence")) {
+            some(v) { v }
+            _ {
+                fail("invalid stop_sequence")
+            }
+        };
+        let trip_id = m.get("trip_id");
+        if !stop_times.contains_key(trip_id) {
+            stop_times.insert(trip_id, []);
+        }
+        let mut trip_list = stop_times.get("trip_id");
+        let time =  {
             trip_id: m.get("trip_id"),
             arrival_time: gettime(m.get("arrival_time")),
             departure_time: gettime(m.get("departure_time")),
             stop_id: m.get("stop_id"),
-            sequence: alt uint::from_str(m.get("stop_sequence")) {
-                some(v) { v }
-                _ {
-                    fail("invalid stop_sequence")
-                }
-            },
+            sequence: seq,
             headsign: getoption(m, "stop_headsign"),
             pickup_type: getmarshal(getoption(m, "pickup_type")),
             drop_off_type: getmarshal(getoption(m, "drop_off_type")),
@@ -428,7 +434,8 @@ fn gtfs_load(dir: str) -> feed
                 }
                 none { none }
             }
-        });
+        };
+        trip_list += [ time ];
     };
     let calendars : map::hashmap<str, calendar> = map::str_hash();
     fn getbool(s: str) -> bool {
