@@ -263,30 +263,35 @@ fn gtfs_load(dir: str) -> feed
             none { none }
         }
     }
-    file_iter("stops.txt", ["stop_id", "stop_name", "stop_lat", "stop_lon"]) { |m|
+    fn stop_pt(m: map::hashmap<str, str>) -> option<point> {
         let (ok, lat) = getfloat(m, "stop_lat");
         if !ok {
-            ret;
+            ret none;
         }
         let (ok, lon) = getfloat(m, "stop_lon");
         if !ok {
-            ret;
+            ret none;
         }
-        no_overwrite(stops, m.get("stop_id"), {
-            id: m.get("stop_id"), 
-            code: getoption(m, "stop_code"),
-            name : m.get("stop_name"),
-            pt : {
-                lat : lat,
-                lon : lon
-            }, 
-            desc: getoption(m, "stop_desc"),
-            zone_id: getoption(m, "zone_id"),
-            url: getoption(m, "stop_url"),
-            location_type: get_location_type(getoption(m, "location_type")),
-            parent_station: getoption(m, "parent_station"),
-            timezone: getoption(m, "stop_timezone")
-        });
+        some({ lat : lat, lon : lon })
+    }
+    file_iter("stops.txt", ["stop_id", "stop_name", "stop_lat", "stop_lon"]) { |m|
+        alt stop_pt(m) {
+            some(pt) {
+                no_overwrite(stops, m.get("stop_id"), {
+                    id: m.get("stop_id"), 
+                    code: getoption(m, "stop_code"),
+                    name : m.get("stop_name"),
+                    pt : pt,
+                    desc: getoption(m, "stop_desc"),
+                    zone_id: getoption(m, "zone_id"),
+                    url: getoption(m, "stop_url"),
+                    location_type: get_location_type(getoption(m, "location_type")),
+                    parent_station: getoption(m, "parent_station"),
+                    timezone: getoption(m, "stop_timezone")
+                });
+            }
+            _ {}
+        }
     };
     fn get_route_type(rt: str) -> route_type {
         alt rt {
