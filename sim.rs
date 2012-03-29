@@ -2,20 +2,18 @@
 use std;
 import std::map;
 import map::hashmap;
+import std::sort;
 use csv;
 import csv::rowreader;
 import csv::{rowiter};
 
-
 /* we want to build these higher-level concepts;
-
    [ Agency ]
      -> Routes
      -> Trips [ for a Service ]
          -> Stop Times
      -> Calendar [ for a Service]
      -> CalendarDates [ for a Service ]
-
 */
 
 type row = map::hashmap<str, str>;
@@ -27,7 +25,7 @@ type feed = {
     trips: map::hashmap<str, trip>,
     stop_times: map::hashmap<str, [ stop_time ]>,
     calendars: map::hashmap<str, calendar>,
-    calendar_dates: map::hashmap<str, calendar_date>,
+    calendar_dates: map::hashmap<str, [ calendar_date ]>,
 };
 
 type agency = {
@@ -213,8 +211,8 @@ fn gtfs_load(dir: str) -> feed
 
     fn no_overwrite<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, v: U) {
         //log(error, (k, v));
-        //let ck = k;
-        //let cv = v;
+        let ck = k;
+        let cv = v;
         if ! m.insert(k, v) {
             log(error, ("no_overwrite: duplicate key", k));
             fail;
@@ -403,7 +401,7 @@ fn gtfs_load(dir: str) -> feed
             }
         }
     }
-    let stop_times : map::hashmap<str, [ stop_time ] > = map::str_hash();
+    let mut stop_times : map::hashmap<str, [ stop_time ] > = map::str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
         let seq = alt uint::from_str(m.get("stop_sequence")) {
             some(v) { v }
@@ -412,10 +410,11 @@ fn gtfs_load(dir: str) -> feed
             }
         };
         let trip_id = m.get("trip_id");
-        if !stop_times.contains_key(trip_id) {
-            stop_times.insert(trip_id, []);
-        }
-        let mut trip_list = stop_times.get("trip_id");
+        let mut trip_list = if stop_times.contains_key(trip_id) {
+            stop_times.get(trip_id)
+        } else {
+            []
+        };
         let time =  {
             trip_id: m.get("trip_id"),
             arrival_time: gettime(m.get("arrival_time")),
@@ -436,6 +435,18 @@ fn gtfs_load(dir: str) -> feed
             }
         };
         trip_list += [ time ];
+        stop_times.insert(trip_id, trip_list);
+    };
+    fn hash_list_sort<T:copy>(m: map::hashmap<str,[T]>, le: fn(T,T) -> bool) -> map::hashmap<str,[T]> {
+        let new_hash = map::str_hash();
+        m.items() { |k,v|
+            new_hash.insert(k, sort::merge_sort(le, v));
+        };
+        ret new_hash;
+    }
+    /* we can't assume they're sorted in input file */
+    stop_times = hash_list_sort(stop_times) { |v1, v2|
+        v1.sequence <= v2.sequence
     };
     let calendars : map::hashmap<str, calendar> = map::str_hash();
     fn getbool(s: str) -> bool {
@@ -484,16 +495,22 @@ fn gtfs_load(dir: str) -> feed
             _ { fail }
         }
     }
-    let calendar_dates : map::hashmap<str, calendar_date> = map::str_hash();
+    let calendar_dates : map::hashmap<str, [calendar_date]> = map::str_hash();
     file_iter("calendar_dates.txt", ["service_id", "date", "exception_type"]) { |m| 
-        no_overwrite(calendar_dates, m.get("service_id"), {
+        let service_id = m.get("service_id");
+        let mut service_dates = if (calendar_dates.contains_key(service_id)) {
+            calendar_dates.get(service_id)
+        } else { 
+            []
+        };
+        let calendar_date = {
             service_id: m.get("service_id"),
             date: getdate(m.get("date")),
             exception_type: get_exception(m.get("exception_type"))
-        });
+        };
+        service_dates += [ calendar_date ];
+        calendar_dates.insert(service_id, service_dates);
     };
-
-
     ret {
         agencies : agencies,
         stops: stops,
