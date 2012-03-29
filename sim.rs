@@ -156,58 +156,48 @@ type calendar_date = {
 
 fn gtfs_load(dir: str) -> feed
 {
-    let file_iter = fn@(fname: str, reqd: [str], f: fn(m: map::hashmap<str,str>)) -> result::result<uint, str> {
+    let file_iter = fn@(fname: str, reqf: [(uint, str)], optf: [(uint, str)], f: fn(row: [str], req: [uint], opt: [option<uint>])) -> result::result<(), str> {
         io::println("loading file: " + fname);
         let path = path::connect(dir, fname);
         let res = io::file_reader(path);
         if result::failure(res) {
-            ret result::err(result::get_err(res));
+            let error : str = result::get_err(res);
+            ret result::err("test");
         }
-        let r = csv::new_reader(result::get(res), ',', '"');
-        let mut nrows = 0u;
-        let mut cols_ok = true;
-        let cols_check = fn@(cols: [str]) -> bool {
-            let mut ok = true;
-            let mut i = 0u;
-            vec::iter(reqd) { |r|
-                ok = ok && vec::contains(cols, r);
-                i += 1u;
+        let reader = csv::new_reader(result::get(res), ',', '"');
+
+        let mut row = [];
+        if !reader.readrow(row) {
+            ret result::err("no column row");
+        }
+
+        let header = vec::map(row) { |t| str::trim(t) };
+
+        let mut req_lookup = [];
+        let mut i = 0u;
+        vec::iter(reqf) { |field|
+            let (enumval, fieldname) = field;
+            assert(enumval == i);
+            let pos = vec::position_elem(header, fieldname);
+            alt pos {
+                some(pos) { req_lookup += [pos] }
+                none { fail("required field not found in file") }
             }
-            ret ok;
+            i += 1u;
         };
-        csv::hashmap_iter_full(r, {|s| str::trim(s)}, {|cols| cols_ok = cols_check(cols); cols_ok}) { |m|
-            f(m);
-            nrows += 1u;
+        let mut opt_lookup = [];
+        let mut i = 0u;
+        vec::iter(optf) { |field|
+            let (enumval, fieldname) = field;
+            assert(enumval == i);
+            opt_lookup += [vec::position_elem(header, fieldname)];
+            i += 1u;
         };
-        if !cols_ok {
-            ret result::err("required columns not found");
+        while reader.readrow(row) {
+            f(row, req_lookup, opt_lookup);
         }
-        ret result::ok(nrows);
+        ret result::ok(());
     };
-
-    fn dump_row(m: map::hashmap<str, str>) {
-        io::println("");
-        m.keys() { |k| 
-            let v = m.get(k);
-            io::println(#fmt("'%s' -> %s", k, v));
-        }
-    }
-
-    fn getdefault<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, def: U) -> U {
-        if m.contains_key(k) {
-            m.get(k)
-        } else {
-            def
-        }
-    }
-
-    fn getoption<T: copy, U: copy>(m: map::hashmap<T, U>, k: T) -> option<U> {
-        if m.contains_key(k) {
-            some(m.get(k))
-        } else {
-            none
-        }
-    }
 
     fn no_overwrite<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, v: U) {
         //log(error, (k, v));
@@ -219,78 +209,123 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    fn getfloat(m: map::hashmap<str, str>, k: str) -> (bool, float) {
-        let v = m.get(k);
-        alt float::from_str(v) {
-            some(n) {
-                (true, n)
-            }
-            none {
-                io::println(#fmt("unparsable floating point field `%s' -> `%s'.", k, v));
-                (false, 0.)
-            }
+
+    fn getdefault(row: [str], offset: option<uint>, default: str) -> str {
+        alt offset {
+            some(n) { row[n] }
+            none { default }
         }
     }
 
-    let agencies : map::hashmap<str, agency> = map::str_hash();
-    file_iter("agency.txt", ["agency_name", "agency_url", "agency_timezone"]) { |m| 
-        let id = getdefault(m, "agency_id", "_");
-        no_overwrite(agencies, id, {
-            id: getdefault(m, "agency_id", "_"),
-            name: m.get("agency_name"),
-            url: m.get("agency_url"),
-            timezone: m.get("agency_timezone"),
-            lang: getoption(m, "agency_lang"),
-            phone: getoption(m, "agency_phone"),
-            fare_url: getoption(m, "agency_fare_url"),
-        });
-    };
-
-    let stops : map::hashmap<str, stop> = map::str_hash();
-    fn get_location_type(loc: option<str>) -> option<location_type> {
-        alt loc {
-            some(s) {
-                if s == "" || s == "0" {
-                    some(location_stop)
-                } else if s == "1" {
-                    some(location_station)
-                } else {
-                    fail("impossible location")
-                }
-            }
+    fn getoption(row: [str], offset: option<uint>) -> option<str> {
+        alt offset {
+            some(n) { some(row[n]) }
             none { none }
         }
     }
-    fn stop_pt(m: map::hashmap<str, str>) -> option<point> {
-        let (ok, lat) = getfloat(m, "stop_lat");
-        if !ok {
-            ret none;
+
+    fn floatfail(s: str) -> float {
+        alt float::from_str(s) {
+            some(n) { n }
+            none { fail("cannot convert str to floating point") }
         }
-        let (ok, lon) = getfloat(m, "stop_lon");
-        if !ok {
-            ret none;
-        }
-        some({ lat : lat, lon : lon })
     }
-    file_iter("stops.txt", ["stop_id", "stop_name", "stop_lat", "stop_lon"]) { |m|
-        alt stop_pt(m) {
-            some(pt) {
-                no_overwrite(stops, m.get("stop_id"), {
-                    id: m.get("stop_id"), 
-                    code: getoption(m, "stop_code"),
-                    name : m.get("stop_name"),
-                    pt : pt,
-                    desc: getoption(m, "stop_desc"),
-                    zone_id: getoption(m, "zone_id"),
-                    url: getoption(m, "stop_url"),
-                    location_type: get_location_type(getoption(m, "location_type")),
-                    parent_station: getoption(m, "parent_station"),
-                    timezone: getoption(m, "stop_timezone")
-                });
-            }
-            _ {}
-        }
+
+    let load_agencies = fn@(agencies: map::hashmap<str, agency>) {
+        enum req { name, url, timezone }
+        let reqf = [
+            (name as uint, "agency_name"),
+            (url as uint, "agency_url"),
+            (timezone as uint, "agency_timezone")
+                ];
+        enum opt { id, lang, phone, fare_url }
+        let optf = [
+            (id as uint, "agency_id" ),
+            (lang as uint, "agency_lang"),
+            (phone as uint, "agency_phone"),
+            (fare_url as uint, "agency_fare_url")
+                ];
+        file_iter("agency.txt", reqf, optf) { |row, req, opt|
+            let row_id = getdefault(row, opt[id as uint], "_");
+            no_overwrite(agencies, row_id, {
+                id: row_id, 
+                name: row[req[name as uint]], 
+                url: row[req[url as uint]],
+                timezone: row[req[timezone as uint]],
+                lang: getoption(row, opt[lang as uint]),
+                phone: getoption(row, opt[phone as uint]),
+                fare_url: getoption(row, opt[fare_url as uint])
+            });
+        };
     };
+
+    let load_stops = fn@(stops: map::hashmap<str, stop>) {
+        fn get_location_type(loc: option<str>) -> option<location_type> {
+            alt loc {
+                some(s) {
+                    if s == "" || s == "0" {
+                        some(location_stop)
+                    } else if s == "1" {
+                        some(location_station)
+                    } else {
+                        fail("impossible location")
+                    }
+                }
+                none { none }
+            }
+        }
+        enum req { id, name, lat, lon };
+        let reqf = [
+            (id as uint, "stop_id"),
+            (name as uint, "stop_name"),
+            (lat as uint, "stop_lat"),
+            (lon as uint, "stop_lon")
+                ];
+        enum opt { code, desc, zone_id, url, location_type, parent_station, timezone }
+        let optf = [
+            (code as uint, "stop_code"),
+            (desc as uint, "stop_desc"),
+            (zone_id as uint, "zone_id"),
+            (url as uint, "stop_url"),
+            (location_type as uint, "location_type"),
+            (parent_station as uint, "parent_station"),
+            (timezone as uint, "stop_timezone")
+                ];
+        file_iter("stops.txt", reqf, optf) { |row, req, opt|
+            let stop_id = row[req[id as uint]];
+            no_overwrite(stops, stop_id, {
+                id: stop_id, 
+                code: getoption(row, opt[code as uint]),
+                name : row[req[name as uint]],
+                pt : {
+                    lat : floatfail(row[req[lat as uint]]), 
+                    lon : floatfail(row[req[lon as uint]]), 
+                },
+                desc: getoption(row, opt[desc as uint]),
+                zone_id: getoption(row, opt[zone_id as uint]),
+                url: getoption(row, opt[url as uint]),
+                location_type: get_location_type(getoption(row, opt[location_type as uint])),
+                parent_station: getoption(row, opt[parent_station as uint]),
+                timezone: getoption(row, opt[timezone as uint])
+            });
+        };
+    };
+
+
+    let agencies : map::hashmap<str, agency> = map::str_hash();
+    let trips : map::hashmap<str, trip> = map::str_hash();
+    let stops : map::hashmap<str, stop> = map::str_hash();
+    let routes : map::hashmap<str, route> = map::str_hash();
+    let mut stop_times : map::hashmap<str, [ stop_time ] > = map::str_hash();
+    let calendars : map::hashmap<str, calendar> = map::str_hash();
+    let calendar_dates : map::hashmap<str, [calendar_date]> = map::str_hash();
+
+    load_agencies(agencies);
+    load_stops(stops);
+
+
+
+    /*
     fn get_route_type(rt: str) -> route_type {
         alt rt {
             "0" { tram }
@@ -304,7 +339,6 @@ fn gtfs_load(dir: str) -> feed
             _ { fail("invalid route type") }
         }
     }
-    let routes : map::hashmap<str, route> = map::str_hash();
     file_iter("routes.txt", ["route_id", "route_short_name", "route_long_name", "route_type"]) { |m|
         no_overwrite(routes, m.get("route_id"), { 
             id: m.get("route_id"), 
@@ -332,7 +366,6 @@ fn gtfs_load(dir: str) -> feed
             }
         }
     }
-    let trips : map::hashmap<str, trip> = map::str_hash();
     file_iter("trips.txt", ["route_id", "service_id", "trip_id"]) { |m|
         no_overwrite(trips, m.get("trip_id"), {
             id: m.get("trip_id"),
@@ -401,7 +434,6 @@ fn gtfs_load(dir: str) -> feed
             }
         }
     }
-    let mut stop_times : map::hashmap<str, [ stop_time ] > = map::str_hash();
     file_iter("stop_times.txt", ["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"]) { |m|
         let seq = alt uint::from_str(m.get("stop_sequence")) {
             some(v) { v }
@@ -448,7 +480,6 @@ fn gtfs_load(dir: str) -> feed
     stop_times = hash_list_sort(stop_times) { |v1, v2|
         v1.sequence <= v2.sequence
     };
-    let calendars : map::hashmap<str, calendar> = map::str_hash();
     fn getbool(s: str) -> bool {
         alt(s) {
             "0" { false }
@@ -495,7 +526,6 @@ fn gtfs_load(dir: str) -> feed
             _ { fail }
         }
     }
-    let calendar_dates : map::hashmap<str, [calendar_date]> = map::str_hash();
     file_iter("calendar_dates.txt", ["service_id", "date", "exception_type"]) { |m| 
         let service_id = m.get("service_id");
         let mut service_dates = if (calendar_dates.contains_key(service_id)) {
@@ -511,6 +541,7 @@ fn gtfs_load(dir: str) -> feed
         service_dates += [ calendar_date ];
         calendar_dates.insert(service_id, service_dates);
     };
+    */
     ret {
         agencies : agencies,
         stops: stops,
