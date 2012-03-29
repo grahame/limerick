@@ -156,9 +156,8 @@ type calendar_date = {
 
 fn gtfs_load(dir: str) -> feed
 {
-    let file_iter = fn@(fname: str, reqf: [(uint, str)], optf: [(uint, str)], f: fn(row: [str], req: [uint], opt: [option<uint>])) -> result::result<(), str> {
-        io::println("loading file: " + fname);
-        let path = path::connect(dir, fname);
+    fn file_iter(path: str, reqf: [(uint, str)], optf: [(uint, str)], f: fn(row: [str], req: [uint], opt: [option<uint>])) -> result::result<(), str> {
+        io::println("loading file: " + path);
         let res = io::file_reader(path);
         if result::failure(res) {
             let error : str = result::get_err(res);
@@ -231,7 +230,7 @@ fn gtfs_load(dir: str) -> feed
         }
     }
 
-    let load_agencies = fn@(agencies: map::hashmap<str, agency>) {
+    fn load_agencies(fname: str, agencies: map::hashmap<str, agency>) {
         enum req { name, url, timezone }
         let reqf = [
             (name as uint, "agency_name"),
@@ -245,7 +244,7 @@ fn gtfs_load(dir: str) -> feed
             (phone as uint, "agency_phone"),
             (fare_url as uint, "agency_fare_url")
                 ];
-        file_iter("agency.txt", reqf, optf) { |row, req, opt|
+        file_iter(fname, reqf, optf) { |row, req, opt|
             let row_id = getdefault(row, opt[id as uint], "_");
             no_overwrite(agencies, row_id, {
                 id: row_id, 
@@ -259,9 +258,9 @@ fn gtfs_load(dir: str) -> feed
         };
     };
 
-    let load_stops = fn@(stops: map::hashmap<str, stop>) {
+    fn load_stops(fname: str, stops: map::hashmap<str, stop>) {
         fn get_location_type(loc: option<str>) -> option<location_type> {
-            alt loc {
+            alt loc{
                 some(s) {
                     if s == "" || s == "0" {
                         some(location_stop)
@@ -291,7 +290,7 @@ fn gtfs_load(dir: str) -> feed
             (parent_station as uint, "parent_station"),
             (timezone as uint, "stop_timezone")
                 ];
-        file_iter("stops.txt", reqf, optf) { |row, req, opt|
+        file_iter(fname, reqf, optf) { |row, req, opt|
             let stop_id = row[req[id as uint]];
             no_overwrite(stops, stop_id, {
                 id: stop_id, 
@@ -320,10 +319,8 @@ fn gtfs_load(dir: str) -> feed
     let calendars : map::hashmap<str, calendar> = map::str_hash();
     let calendar_dates : map::hashmap<str, [calendar_date]> = map::str_hash();
 
-    load_agencies(agencies);
-    load_stops(stops);
-
-
+    load_agencies(path::connect(dir, "agency.txt"), agencies);
+    load_stops(path::connect(dir, "stops.txt"), stops);
 
     /*
     fn get_route_type(rt: str) -> route_type {
