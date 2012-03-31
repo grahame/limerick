@@ -205,9 +205,6 @@ fn gtfs_load(dir: str) -> feed
     };
 
     fn no_overwrite<T: copy, U: copy>(m: map::hashmap<T, U>, k: T, v: U) {
-        //log(error, (k, v));
-        let ck = k;
-        let cv = v;
         if ! m.insert(k, v) {
             log(error, ("no_overwrite: duplicate key", k));
             fail;
