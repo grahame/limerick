@@ -167,7 +167,7 @@ fn gtfs_load(dir: str) -> feed
     fn file_iter(path: str, reqf: [(uint, str)], optf: [(uint, str)], f: fn(row: [str], req: [uint], opt: [option<uint>])) {
         io::println("loading file: " + path);
         let res = io::file_reader(path);
-        if result::failure(res) {
+        if result::is_failure(res) {
             let error : str = result::get_err(res);
             fail(#fmt("cannot open %s: %s", path, error));
         }
