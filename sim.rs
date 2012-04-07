@@ -199,7 +199,7 @@ fn gtfs_load(dir: str) -> feed
             opt_lookup += [vec::position_elem(header, fieldname)];
             i += 1u;
         };
-        while reader.readrow(row) {
+        for reader.iter() { |row| 
             f(row, req_lookup, opt_lookup);
         }
     };
