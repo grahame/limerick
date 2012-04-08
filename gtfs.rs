@@ -580,7 +580,7 @@ fn gtfs_load(dir: str) -> feed
                 ];
         file_iter(fname, req, []) { |row,req,opt|
             let service_id = row[req[id as uint]];
-            let mut service_dates = if (calendar_dates.contains_key(service_id)) {
+            let mut service_dates = if calendar_dates.contains_key(service_id) {
                 calendar_dates.get(service_id)
             } else { 
                 []
@@ -637,17 +637,69 @@ fn gtfs_load(dir: str) -> feed
 
 iface feedaccess {
     fn describe() -> str;
+    fn stops_bbox(stops: [@stop] ) -> rectangle;
     fn bbox() -> rectangle;
     fn routes_for_agency(id: str) -> [ @route ];
+    fn stops_for_agency(id: str) -> [ str ];
+    fn lookup_stops(stop_ids: [ str ]) -> [ @stop ];
+}
+
+fn point_format(point: point) -> str {
+    let mut r = if point.lat >= 0. {
+        #fmt("%3.2fN", point.lat)
+    } else {
+        #fmt("%3.2fS", -point.lat)
+    };
+    r += " ";
+    r += if point.lon > 0. {
+        #fmt("%3.2fE", point.lon)
+    } else {
+        #fmt("%3.2fW", -point.lon)
+    };
+    ret r;
 }
 
 impl of feedaccess for feed {
+    fn lookup_stops(stop_ids: [ str ]) -> [ @stop ] {
+        let mut stops = [];
+        vec::reserve(stops, vec::len(stop_ids));
+        for stop_id in stop_ids {
+            stops += [ self.stops.get(stop_id) ];
+        }
+        ret stops;
+    }
+    fn stops_for_agency(id: str) -> [ str ] {
+        let stop_ids : map::set<str> = map::str_hash();
+        self.stop_times.items() { |trip_id, stop_times|
+            let trip = self.trips.get(trip_id);
+            let route = self.routes.get(trip.route_id);
+            if route.agency_id == id {
+                for vec::each(stop_times) { |stop_time|
+                    map::set_add(stop_ids, stop_time.stop_id);
+                };
+            }
+        };
+        let mut s = [];
+        vec::reserve(s, stop_ids.size());
+        stop_ids.keys() { |stop_id|
+            s += [ stop_id ];
+        }
+        ret s;
+    }
     fn describe() -> str {
         let mut res = #fmt("%u agencies, %u stops, %u routes, %u trips, %u stop_times, %u calendars, %u calendar_dates\n",
             self.agencies.size(), self.stops.size(), self.routes.size(), self.trips.size(), self.stop_times.size(),
             self.calendars.size(), self.calendar_dates.size());
         self.agencies.items() { |id,agency|
-            res += #fmt("agency id %s: %s (%u routes)\n", id, agency.name, vec::len(self.routes_for_agency(id)));
+            let stop_ids = self.stops_for_agency(id);
+            let stops = self.lookup_stops(stop_ids);
+            let bounds = self.stops_bbox(stops);
+            res += #fmt("agency id %s: %s (%u routes, %u stops) SW (%s) NE (%s)\n",
+                    id, agency.name,
+                    vec::len(self.routes_for_agency(id)),
+                    vec::len(stops),
+                    point_format(bounds.sw),
+                    point_format(bounds.ne));
         };
         ret res;
     }
@@ -655,16 +707,16 @@ impl of feedaccess for feed {
         let mut routes = [];
         vec::reserve(routes, self.routes.size());
         self.routes.values() { |route|
-            if (route.agency_id == id) {
+            if route.agency_id == id {
                 routes += [ route ];
             }
         };
         ret routes;
     }
-    fn bbox() -> rectangle {
+    fn stops_bbox(stops: [@stop] ) -> rectangle {
         let mut lat_max = float::neg_infinity, lat_min = float::infinity;
         let mut lon_max = float::neg_infinity, lon_min = float::infinity;
-        self.stops.values() { |stop|
+        for stop in stops {
             lat_min = float::fmin(lat_min, stop.pt.lat);
             lon_min = float::fmin(lon_min, stop.pt.lon);
             lat_max = float::fmax(lat_max, stop.pt.lat);
@@ -674,5 +726,13 @@ impl of feedaccess for feed {
             sw : { lat: lat_min, lon: lon_min },
             ne : { lat: lat_max, lon: lon_max }
         }
+    }
+    fn bbox() -> rectangle {
+        let mut stops = [];
+        vec::reserve(stops, self.stops.size());
+        self.stops.values() { |stop|
+            stops += [ stop ];
+        }
+        self.stops_bbox(stops)
     }
 }
