@@ -74,6 +74,11 @@ type point = {
     lon : float
 };
 
+type rectangle = {
+    sw : point,
+    ne : point,
+};
+
 enum location_type {
     location_stop(),
     location_station()
@@ -630,6 +635,7 @@ fn gtfs_load(dir: str) -> feed
 
 iface feedaccess {
     fn describe() -> str;
+    fn bbox() -> rectangle;
 }
 
 impl of feedaccess for feed {
@@ -638,11 +644,26 @@ impl of feedaccess for feed {
             self.agencies.size(), self.stops.size(), self.routes.size(), self.trips.size(), self.stop_times.size(),
             self.calendars.size(), self.calendar_dates.size())
     }
+    fn bbox() -> rectangle {
+        let mut lat_max = float::neg_infinity, lat_min = float::infinity;
+        let mut lon_max = float::neg_infinity, lon_min = float::infinity;
+        self.stops.values() { |stop|
+            lat_min = float::fmin(lat_min, stop.pt.lat);
+            lon_min = float::fmin(lon_min, stop.pt.lon);
+            lat_max = float::fmax(lat_max, stop.pt.lat);
+            lon_max = float::fmax(lon_max, stop.pt.lon);
+        };
+        {
+            sw : { lat: lat_min, lon: lon_min },
+            ne : { lat: lat_max, lon: lon_max }
+        }
+    }
 }
 
 fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
     io::println(feed.describe());
+    log(error, feed.bbox());
 }
 
