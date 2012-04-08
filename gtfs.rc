@@ -1,0 +1,4 @@
+#[link(name = "gtfs", vers = "0.1", uuid = "133d06a8-6e6b-4175-a476-0b73988cdebd", author = "grahame")];
+#[crate_type = "lib"];
+
+mod gtfs;

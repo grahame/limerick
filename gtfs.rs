@@ -7,6 +7,8 @@ use csv;
 import csv::rowreader;
 import csv::{rowiter};
 
+export gtfs_load, feedaccess, feed;
+
 /* we want to build these higher-level concepts;
    [ Agency ]
      -> Routes
@@ -659,11 +661,3 @@ impl of feedaccess for feed {
         }
     }
 }
-
-fn main(args: [str])
-{
-    let feed = gtfs_load(args[1]);
-    io::println(feed.describe());
-    log(error, feed.bbox());
-}
-

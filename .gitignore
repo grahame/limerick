@@ -1,1 +1,5 @@
-data/*
+*.dylib
+*DSYM
+.*swp
+bbox
+data/
