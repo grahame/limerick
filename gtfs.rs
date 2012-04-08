@@ -638,13 +638,28 @@ fn gtfs_load(dir: str) -> feed
 iface feedaccess {
     fn describe() -> str;
     fn bbox() -> rectangle;
+    fn routes_for_agency(id: str) -> [ @route ];
 }
 
 impl of feedaccess for feed {
     fn describe() -> str {
-        #fmt("%u agencies, %u stops, %u routes, %u trips, %u stop_times, %u calendars, %u calendar_dates",
+        let mut res = #fmt("%u agencies, %u stops, %u routes, %u trips, %u stop_times, %u calendars, %u calendar_dates\n",
             self.agencies.size(), self.stops.size(), self.routes.size(), self.trips.size(), self.stop_times.size(),
-            self.calendars.size(), self.calendar_dates.size())
+            self.calendars.size(), self.calendar_dates.size());
+        self.agencies.items() { |id,agency|
+            res += #fmt("agency id %s: %s (%u routes)\n", id, agency.name, vec::len(self.routes_for_agency(id)));
+        };
+        ret res;
+    }
+    fn routes_for_agency(id: str) -> [ @route ] {
+        let mut routes = [];
+        vec::reserve(routes, self.routes.size());
+        self.routes.values() { |route|
+            if (route.agency_id == id) {
+                routes += [ route ];
+            }
+        };
+        ret routes;
     }
     fn bbox() -> rectangle {
         let mut lat_max = float::neg_infinity, lat_min = float::infinity;
