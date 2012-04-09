@@ -7,7 +7,7 @@ use csv;
 import csv::rowreader;
 import csv::{rowiter};
 
-export gtfs_load, feedaccess, feed, weekday,
+export gtfs_load, feedaccess, feed, weekday, date,
        agency, stop, route, trip, stop_time, calendar,
        calendar_date;
 
@@ -117,11 +117,6 @@ type trip = {
     shape_id: option<str>
 };
 
-enum time {
-    unspecified(),
-    relnoon(uint)
-}
-
 enum marshal {
     scheduled(),
     nopickup(),
@@ -131,8 +126,8 @@ enum marshal {
 
 type stop_time = {
     trip_id: str,
-    arrival_time: time,
-    departure_time: time,
+    arrival_time: option<uint>,
+    departure_time: option<uint>,
     stop_id: str,
     sequence: uint,
     headsign: option<str>,
@@ -439,9 +434,9 @@ fn gtfs_load(dir: str) -> feed
         };
     }
     fn load_stop_times(fname: str, stop_times: stop_times) {
-        fn gettime(s: str) -> time {
+        fn gettime(s: str) -> option<uint> {
             if s == "" {
-                unspecified
+                none
             } else {
                 let tc : [str] = str::split_char(s, ':');
                 if vec::len(tc) != 3u {
@@ -470,7 +465,7 @@ fn gtfs_load(dir: str) -> feed
                 }
                 secs += minsec(tc[1]) * 60u;
                 secs += minsec(tc[2]);
-                relnoon(secs)
+                some(secs)
             }
         }
         fn getmarshal(s: option<str>) -> option<marshal> {
@@ -658,15 +653,15 @@ fn gtfs_load(dir: str) -> feed
 
 iface feedaccess {
     fn describe() -> str;
+    fn lookup_stops(stop_ids: [ str ]) -> [ @stop ];
+    fn lookup_trips(trip_ids: [ str ]) -> [ @trip ];
+    fn lookup_stop_times(ids: [ str ]) -> [ [ mut @stop_time ] ];
     fn stops_bbox(stops: [@stop] ) -> rectangle;
     fn bbox() -> rectangle;
     fn routes_for_agency(id: str) -> [ @route ];
     fn stops_for_agency(id: str) -> [ str ];
     fn active_service_ids(day: weekday, date: date) -> [ str ];
     fn trip_ids_for_service_ids(service_ids: [ str ]) -> [ str ];
-    fn lookup_stops(stop_ids: [ str ]) -> [ @stop ];
-    fn lookup_trips(trip_ids: [ str ]) -> [ @trip ];
-    fn events(trip_ids: [ str ]) -> [ event ];
 }
 
 fn point_format(point: point) -> str {
@@ -702,6 +697,9 @@ impl of feedaccess for feed {
     }
     fn lookup_routes(ids: [ str ]) -> [ @route ] {
         ret lookup_list(self.routes, ids);
+    }
+    fn lookup_stop_times(ids: [ str ]) -> [ [ mut @stop_time ] ] {
+        ret lookup_list(self.stop_times, ids);
     }
     fn stops_for_agency(id: str) -> [ str ] {
         let stop_ids : map::set<str> = map::str_hash();
@@ -808,11 +806,6 @@ impl of feedaccess for feed {
             }
         }
         ret trips;
-    }
-    fn events(trip_ids: [ str ]) -> [ event ] {
-        let mut events = [];
-        vec::reserve(events, self.stop_times.size());
-        ret events;
     }
     fn bbox() -> rectangle {
         let mut stops = [];
