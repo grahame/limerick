@@ -40,6 +40,8 @@ fn main(args: [str])
         let route = feed.lookup_routes([trip.route_id])[0];
         route.agency_id == agency_id
     };
+    let events = feed.events(trip_ids);
+
     io::println(#fmt("%u active services, %u active trips.", vec::len(service_ids), vec::len(trips)));
 }
 

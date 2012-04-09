@@ -175,6 +175,13 @@ type calendar_date = {
     exception_type: exception
 };
 
+enum event {
+    trip_started(@trip),
+    trip_completed(@trip),
+    stop_arrival(@trip, @stop_time),
+    stop_departure(@trip, @stop_time)
+}
+
 fn gtfs_load(dir: str) -> feed
 {
     fn file_iter(path: str, reqf: [(uint, str)], optf: [(uint, str)], f: fn(row: [str], req: [uint], opt: [option<uint>])) {
@@ -659,6 +666,7 @@ iface feedaccess {
     fn trip_ids_for_service_ids(service_ids: [ str ]) -> [ str ];
     fn lookup_stops(stop_ids: [ str ]) -> [ @stop ];
     fn lookup_trips(trip_ids: [ str ]) -> [ @trip ];
+    fn events(trip_ids: [ str ]) -> [ event ];
 }
 
 fn point_format(point: point) -> str {
@@ -788,7 +796,6 @@ impl of feedaccess for feed {
         }
         ret res;
     }
-
     fn trip_ids_for_service_ids(service_ids: [ str ]) -> [ str ] {
         let ids = map::str_hash();
         for vec::each(service_ids) { |s| 
@@ -801,6 +808,11 @@ impl of feedaccess for feed {
             }
         }
         ret trips;
+    }
+    fn events(trip_ids: [ str ]) -> [ event ] {
+        let mut events = [];
+        vec::reserve(events, self.stop_times.size());
+        ret events;
     }
     fn bbox() -> rectangle {
         let mut stops = [];

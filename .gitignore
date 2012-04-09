@@ -1,6 +1,7 @@
 *.dylib
 *DSYM
 .*swp
-bbox
+*.stamp
 feedinfo
+dayevents
 data/

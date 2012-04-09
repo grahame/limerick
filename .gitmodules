@@ -1,0 +1,3 @@
+[submodule "rust-csv"]
+	path = rust-csv
+	url = git@github.com:grahame/rust-csv.git
