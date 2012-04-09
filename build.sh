@@ -9,5 +9,6 @@ c()
 
 c ../rust-csv/csv.rc &&
 c gtfs.rc &&
-c feedinfo.rs
+c feedinfo.rs &&
+c dayevents.rs
 

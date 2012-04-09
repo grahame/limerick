@@ -663,7 +663,7 @@ impl of feedaccess for feed {
     fn lookup_stops(stop_ids: [ str ]) -> [ @stop ] {
         let mut stops = [];
         vec::reserve(stops, vec::len(stop_ids));
-        for stop_id in stop_ids {
+        for vec::each(stop_ids) { |stop_id|
             stops += [ self.stops.get(stop_id) ];
         }
         ret stops;
@@ -716,7 +716,7 @@ impl of feedaccess for feed {
     fn stops_bbox(stops: [@stop] ) -> rectangle {
         let mut lat_max = float::neg_infinity, lat_min = float::infinity;
         let mut lon_max = float::neg_infinity, lon_min = float::infinity;
-        for stop in stops {
+        for vec::each(stops) { |stop|
             lat_min = float::fmin(lat_min, stop.pt.lat);
             lon_min = float::fmin(lon_min, stop.pt.lon);
             lat_max = float::fmax(lat_max, stop.pt.lat);

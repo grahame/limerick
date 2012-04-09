@@ -7,6 +7,5 @@ fn main(args: [str])
 {
     let feed = gtfs_load(args[1]);
     io::println(feed.describe());
-    log(error, feed.bbox());
 }
 
