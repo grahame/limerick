@@ -126,8 +126,8 @@ enum marshal {
 
 type stop_time = {
     trip_id: str,
-    arrival_time: option<uint>,
-    departure_time: option<uint>,
+    arrival_time: uint,
+    departure_time: uint,
     stop_id: str,
     sequence: uint,
     headsign: option<str>,
@@ -434,9 +434,9 @@ fn gtfs_load(dir: str) -> feed
         };
     }
     fn load_stop_times(fname: str, stop_times: stop_times) {
-        fn gettime(s: str) -> option<uint> {
+        fn gettime(s: str) -> uint {
             if s == "" {
-                none
+                fail("missing times are currently unsupported")
             } else {
                 let tc : [str] = str::split_char(s, ':');
                 if vec::len(tc) != 3u {
@@ -465,7 +465,7 @@ fn gtfs_load(dir: str) -> feed
                 }
                 secs += minsec(tc[1]) * 60u;
                 secs += minsec(tc[2]);
-                some(secs)
+                secs
             }
         }
         fn getmarshal(s: option<str>) -> option<marshal> {
