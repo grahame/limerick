@@ -27,7 +27,7 @@ fn main(args: [str])
     };
     let date =  {
         day: tm.tm_mday as uint,
-        month: tm.tm_mon as uint,
+        month: tm.tm_mon as uint + 1u,
         year: tm.tm_year as uint + 1900u
     };
 
