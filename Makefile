@@ -8,7 +8,7 @@ RUSTARGS=-O -L rust-csv/ -L .
 libcsv.stamp: rust-csv/csv.rc rust-csv/csv.rs
 	$(RUSTC) $(RUSTARGS) $< && touch $@
 
-libgtfs.stamp: gtfs.rc gtfs.rs
+libgtfs.stamp: gtfs.rc gtfs.rs libcsv.stamp
 	$(RUSTC) $(RUSTARGS) $< && touch $@
 
 feedinfo: feedinfo.rs libcsv.stamp libgtfs.stamp
