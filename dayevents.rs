@@ -9,8 +9,8 @@ enum event {
     startevents(uint,uint),
     endevents,
     starttrip(uint, ~gtfs::trip),
-    endtrip(~gtfs::trip),
-    stoparrival(~gtfs::trip, ~gtfs::stop),
+    endtrip(uint, ~gtfs::trip),
+    stoparrival(uint, ~gtfs::trip, ~gtfs::stop_time),
 }
 
 fn simulate_events(out: comm::chan<event>, agency_id: str, dstr: str, data_dir: str) {
@@ -38,7 +38,7 @@ fn simulate_events(out: comm::chan<event>, agency_id: str, dstr: str, data_dir: 
 
     let feed = gtfs_load(data_dir);
 
-    let trip_stops = { ||
+    let mut trip_stops = { ||
         let service_ids = feed.active_service_ids(day, date);
         let trip_ids = feed.trip_ids_for_service_ids(service_ids);
         let trips = vec::filter(feed.lookup_trips(trip_ids)) { |trip|
@@ -65,9 +65,55 @@ fn simulate_events(out: comm::chan<event>, agency_id: str, dstr: str, data_dir: 
         }, ts);
         ts
     }();
-    for vec::each(trip_stops) { |tp|
-        let (trip, first_arrival, stop_times) = tp;
-        comm::send(out, starttrip(first_arrival, ~*trip));
+    if vec::len(trip_stops) == 0u {
+        ret;
+    }
+    let mut (_, sec, _) = trip_stops[0];
+    let mut trip_index = 0u;
+    type trip_run = {
+        trip: @gtfs::trip,
+        stop_times: [ mut @gtfs::stop_time ],
+        mut offset: uint
+    };
+    let mut running : [ @trip_run ] = [];
+    loop {
+        /* find commencing trips */
+        while trip_index < vec::len(trip_stops) {
+            let (trip, first_arrival, stop_times) = trip_stops[trip_index];
+            if first_arrival != sec {
+                break;
+            }
+            running += [ @{ trip: trip, stop_times: stop_times, offset: 0u } ];
+            comm::send(out, starttrip(first_arrival, ~*trip));
+            trip_index += 1u;
+        }
+        /* find stop arrivals & ending trips */
+        let mut still_running = [];
+        for vec::each(running) { |r|
+            let l = r.stop_times[r.offset];
+            let t = alt l.arrival_time {
+                some(t) { t }
+                none { fail } //fixme
+            };
+            if t != sec {
+                still_running += [ r ];
+                cont;
+            }
+            comm::send(out, stoparrival(t, ~*r.trip, ~*l));
+            r.offset += 1u;
+            if r.offset == vec::len(r.stop_times) {
+                comm::send(out, endtrip(t, ~*r.trip));
+            } else {
+                still_running += [ r ];
+            }
+        }
+        running = still_running;
+        log(error, ("tick", sec, vec::len(running)));
+        if vec::len(running) == 0u && trip_index == vec::len(trip_stops) {
+            break;
+        }
+        /* tick */
+        sec += 1u;
     }
     comm::send(out, endevents);
 }
@@ -93,8 +139,8 @@ fn main(args: [str])
                 break;
             }
             starttrip(t, trip) { log(error, ("starttrip", t, trip)) }
-            endtrip(t) { log(error, ("endtrip", t)) }
-            stoparrival(t,s) { log(error, ("stoparrival", t, s)) }
+            endtrip(t, trip) { log(error, ("endtrip", t, trip)) }
+            stoparrival(t, trip, stop) { log(error, ("stoparrival", t, trip, stop)) }
         }
     }
 }
