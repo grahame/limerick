@@ -7,7 +7,9 @@ use csv;
 import csv::rowreader;
 import csv::{rowiter};
 
-export gtfs_load, feedaccess, feed;
+export gtfs_load, feedaccess, feed, weekday,
+       agency, stop, route, trip, stop_time, calendar,
+       calendar_date;
 
 /* we want to build these higher-level concepts;
    [ Agency ]
@@ -24,9 +26,9 @@ type agencies = map::hashmap<str, @agency>;
 type stops = map::hashmap<str, @stop>;
 type routes = map::hashmap<str, @route>;
 type trips = map::hashmap<str, @trip>;
-type stop_times = map::hashmap<str, [ @stop_time ]>;
+type stop_times = map::hashmap<str, [ mut @stop_time ]>;
 type calendars = map::hashmap<str, @calendar>;
-type calendar_dates = map::hashmap<str, [@calendar_date]>;
+type calendar_dates = map::hashmap<str, [ mut @calendar_date ]>;
 
 type feed = {
     agencies: agencies,
@@ -145,15 +147,19 @@ type date = {
     year: uint
 };
 
+enum weekday {
+    monday,
+    tuesday,
+    wednesday,
+    thursday,
+    friday,
+    saturday,
+    sunday
+}
+
 type calendar = {
     service_id: str,
-    monday: bool,
-    tuesday: bool,
-    wednesday: bool,
-    thursday: bool,
-    friday: bool, 
-    saturday: bool,
-    sunday: bool,
+    weekdays: [ weekday ],
     start_date: date,
     end_date: date
 };
@@ -499,7 +505,7 @@ fn gtfs_load(dir: str) -> feed
             let mut trip_list = if stop_times.contains_key(id) {
                 stop_times.get(id)
             } else {
-                let mut n = [];
+                let mut n = [mut];
                 vec::reserve(n, 16u);
                 n
             };
@@ -547,18 +553,27 @@ fn gtfs_load(dir: str) -> feed
             (start as uint, "start_date"),
             (end as uint, "end_date")
                 ];
-
+        let day_enum = [
+            (monday, mon as uint),
+            (tuesday, tue as uint),
+            (wednesday, wed as uint),
+            (thursday, thu as uint),
+            (friday, fri as uint),
+            (saturday, sat as uint),
+            (sunday, sun as uint)
+                ];
         file_iter(fname, reqf, []) { |row,req,opt|
             let service_id = row[req[id as uint]];
+            let mut weekdays = [];
+            for vec::each(day_enum) { |tp|
+                let (day, en) = tp;
+                if getbool(row[req[en]]) {
+                    weekdays += [ day ];
+                }
+            };
             no_overwrite(calendars, service_id, @{
                 service_id: service_id,
-                monday: getbool(row[req[mon as uint]]),
-                tuesday: getbool(row[req[tue as uint]]),
-                wednesday: getbool(row[req[wed as uint]]),
-                thursday: getbool(row[req[thu as uint]]),
-                friday: getbool(row[req[fri as uint]]),
-                saturday: getbool(row[req[sat as uint]]),
-                sunday: getbool(row[req[sun as uint]]),
+                weekdays: weekdays,
                 start_date: getdate(row[req[start as uint]]),
                 end_date: getdate(row[req[end as uint]])
             });
@@ -583,7 +598,7 @@ fn gtfs_load(dir: str) -> feed
             let mut service_dates = if calendar_dates.contains_key(service_id) {
                 calendar_dates.get(service_id)
             } else { 
-                []
+                [mut]
             };
             let calendar_date = @{
                 service_id: service_id,
@@ -595,14 +610,13 @@ fn gtfs_load(dir: str) -> feed
         };
     }
 
-    fn hash_list_sort<T:copy>(m: map::hashmap<str,[T]>, le: fn(T,T) -> bool) -> map::hashmap<str,[T]> {
-        let new_hash = map::str_hash();
+    fn hash_list_sort<T:copy>(m: map::hashmap<str,[mut T]>,
+            lt: fn(T,T) -> bool,
+            eq: fn(T,T) -> bool) {
         m.items() { |k,v|
-            new_hash.insert(k, sort::merge_sort(le, v));
+            sort::quick_sort3(lt, eq, v);
         };
-        ret new_hash;
     }
-
 
     let agencies : agencies = map::str_hash();
     let trips : trips = map::str_hash();
@@ -618,9 +632,9 @@ fn gtfs_load(dir: str) -> feed
     load_trips(path::connect(dir, "trips.txt"), trips);
     load_stop_times(path::connect(dir, "stop_times.txt"), stop_times);
     /* we can't assume stop times are sorted in input file */
-    stop_times = hash_list_sort(stop_times) { |v1, v2|
-        v1.sequence <= v2.sequence
-    };
+    hash_list_sort(stop_times,
+            {|v1,v2| v1.sequence < v2.sequence},
+            {|v1,v2| v1.sequence == v2.sequence});
     load_calendars(path::connect(dir, "calendar.txt"), calendars);
     load_calendar_dates(path::connect(dir, "calendar_dates.txt"), calendar_dates);
 
@@ -641,7 +655,10 @@ iface feedaccess {
     fn bbox() -> rectangle;
     fn routes_for_agency(id: str) -> [ @route ];
     fn stops_for_agency(id: str) -> [ str ];
+    fn active_service_ids(day: weekday, date: date) -> [ str ];
+    fn trip_ids_for_service_ids(service_ids: [ str ]) -> [ str ];
     fn lookup_stops(stop_ids: [ str ]) -> [ @stop ];
+    fn lookup_trips(trip_ids: [ str ]) -> [ @trip ];
 }
 
 fn point_format(point: point) -> str {
@@ -659,14 +676,24 @@ fn point_format(point: point) -> str {
     ret r;
 }
 
+fn lookup_list<K: copy>(map: map::hashmap<str, K>, keys: [str]) -> [ K ] {
+    let mut r = [];
+    vec::reserve(r, map.size());
+    for vec::each(keys) { |key|
+        r += [ map.get(key) ];
+    }
+    ret r;
+}
+
 impl of feedaccess for feed {
-    fn lookup_stops(stop_ids: [ str ]) -> [ @stop ] {
-        let mut stops = [];
-        vec::reserve(stops, vec::len(stop_ids));
-        for vec::each(stop_ids) { |stop_id|
-            stops += [ self.stops.get(stop_id) ];
-        }
-        ret stops;
+    fn lookup_stops(ids: [ str ]) -> [ @stop ] {
+        ret lookup_list(self.stops, ids);
+    }
+    fn lookup_trips(ids: [ str ]) -> [ @trip ] {
+        ret lookup_list(self.trips, ids);
+    }
+    fn lookup_routes(ids: [ str ]) -> [ @route ] {
+        ret lookup_list(self.routes, ids);
     }
     fn stops_for_agency(id: str) -> [ str ] {
         let stop_ids : map::set<str> = map::str_hash();
@@ -726,6 +753,54 @@ impl of feedaccess for feed {
             sw : { lat: lat_min, lon: lon_min },
             ne : { lat: lat_max, lon: lon_max }
         }
+    }
+    fn active_service_ids(day: weekday, date: date) -> [ str ] {
+        let active : map::set<str> = map::str_hash();
+        // first, we got through and find all the calendar events 
+        // active on this week day
+        self.calendars.values() { |calendar|
+            alt vec::position_elem(calendar.weekdays, day) {
+                some(d) { 
+                    map::set_add(active, calendar.service_id);
+                }
+                none {}
+            }
+        }
+        self.calendar_dates.values() { |exceptions| 
+            for vec::each(exceptions) { |e|
+                if e.date != date {
+                    cont;
+                }
+                alt e.exception_type {
+                    service_added {
+                        map::set_add(active, e.service_id);
+                    }
+                    service_removed {
+                        active.remove(e.service_id);
+                    }
+                }
+            }
+        }
+        let mut res = [];
+        vec::reserve(res, active.size());
+        active.keys() { |service_id|
+            res += [ service_id ];
+        }
+        ret res;
+    }
+
+    fn trip_ids_for_service_ids(service_ids: [ str ]) -> [ str ] {
+        let ids = map::str_hash();
+        for vec::each(service_ids) { |s| 
+            map::set_add(ids, s);
+        }
+        let mut trips = [];
+        self.trips.values() { |trip|
+            if ids.contains_key(trip.service_id) {
+                trips += [ trip.id ];
+            }
+        }
+        ret trips;
     }
     fn bbox() -> rectangle {
         let mut stops = [];

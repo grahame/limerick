@@ -7,18 +7,39 @@ import gtfs::{feedaccess};
 fn main(args: [str])
 {
     let agency_id = args[1];
-    let date = args[2];
+    let dstr = args[2];
     let data_dir = args[3];
 
-    let tm = alt std::time::strptime(date, "%Y-%m-%d") {
+    let tm = alt std::time::strptime(dstr, "%a %Y-%m-%d") {
         result::ok(d) { d }
         result::err(s) { fail(s) }
     };
 
-    io::println(#fmt("playing back transport events for %d %d %d day %d",
-                tm.tm_year as int, tm.tm_mon as int, tm.tm_mday as int, tm.tm_wday as int));
+    let day = alt tm.tm_wday as int {
+        0 { gtfs::sunday }
+        1 { gtfs::monday }
+        2 { gtfs::tuesday }
+        3 { gtfs::wednesday }
+        4 { gtfs::thursday }
+        5 { gtfs::friday }
+        6 { gtfs::saturday }
+        _ { fail }
+    };
+    let date =  {
+        day: tm.tm_mday as uint,
+        month: tm.tm_mon as uint,
+        year: tm.tm_year as uint + 1900u
+    };
 
+    io::println(#fmt("%? %?", day, date));
 
-    //let feed = gtfs_load(data_dir);
+    let feed = gtfs_load(data_dir);
+    let service_ids = feed.active_service_ids(day, date);
+    let trip_ids = feed.trip_ids_for_service_ids(service_ids);
+    let trips = vec::filter(feed.lookup_trips(trip_ids)) { |trip|
+        let route = feed.lookup_routes([trip.route_id])[0];
+        route.agency_id == agency_id
+    };
+    io::println(#fmt("%u active services, %u active trips.", vec::len(service_ids), vec::len(trips)));
 }
 
