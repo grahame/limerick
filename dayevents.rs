@@ -74,43 +74,32 @@ fn simulate_events(out: comm::chan<event>, agency_id: str, dstr: str, data_dir: 
         mut offset: uint
     };
 
-    let mut last_t = 0u;
-    for vec::each(trip_stops) { |ts|
-        let (_, t, st) = trip_stops[trip_index];
-        assert(t >= last_t);
-        last_t = t;
-
-        let mut tt = 0u;
-        for vec::each(st) { |stop_time| 
-            assert(stop_time.arrival_time >= tt);
-            tt = stop_time.arrival_time;
-        }
-    }
-
     let mut running : [ @trip_run ] = [];
     loop {
+        let mut next_time = uint::max_value;
         /* find commencing trips */
         while trip_index < vec::len(trip_stops) {
             let (trip, first_arrival, stop_times) = trip_stops[trip_index];
             assert(first_arrival >= now);
             if first_arrival != now {
+                next_time = uint::min(first_arrival, next_time);
                 break;
             }
             running += [ @{ trip: trip, stop_times: stop_times, offset: 0u } ];
-            comm::send(out, starttrip(first_arrival, ~*trip));
+            comm::send(out, starttrip(now, ~*trip));
             trip_index += 1u;
         }
         /* find stop arrivals & ending trips */
         let mut still_running = [];
         for vec::each(running) { |r|
             while r.offset < vec::len(r.stop_times) {
-                let l = r.stop_times[r.offset];
-                let t = l.arrival_time;
-                assert(t >= now);
-                if t != now {
+                let st = r.stop_times[r.offset];
+                assert(st.arrival_time >= now);
+                if st.arrival_time != now {
+                    next_time = uint::min(st.arrival_time, next_time);
                     break;
                 }
-                comm::send(out, stoparrival(t, ~*r.trip, ~*l));
+                comm::send(out, stoparrival(now, ~*r.trip, ~*st));
                 r.offset += 1u;
             }
             if r.offset == vec::len(r.stop_times) {
@@ -124,7 +113,7 @@ fn simulate_events(out: comm::chan<event>, agency_id: str, dstr: str, data_dir: 
             break;
         }
         /* tick */
-        now += 1u;
+        now = next_time;
     }
     comm::send(out, endevents);
 }
