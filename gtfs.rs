@@ -1,6 +1,7 @@
 
 use std;
 import std::map;
+import std::map::{map};
 import map::hashmap;
 import std::sort;
 use csv;
@@ -183,8 +184,8 @@ fn gtfs_load(dir: str) -> feed
         io::println("loading file: " + path);
         let res = io::file_reader(path);
         if result::is_failure(res) {
-            let error : str = result::get_err(res);
-            fail(#fmt("cannot open %s: %s", path, error));
+            let err : str = result::get_err(res);
+            fail(#fmt("cannot open %s: %s", path, err));
         }
         let reader = csv::new_reader(result::get(res), ',', '"');
         let mut row = [];
@@ -615,7 +616,7 @@ fn gtfs_load(dir: str) -> feed
     fn hash_list_sort<T:copy>(m: map::hashmap<str,[mut T]>,
             lt: fn(T,T) -> bool,
             eq: fn(T,T) -> bool) {
-        m.items() { |k,v|
+        for m.each() { |k,v|
             sort::quick_sort3(lt, eq, v);
         };
     }
@@ -703,7 +704,7 @@ impl of feedaccess for feed {
     }
     fn stops_for_agency(id: str) -> [ str ] {
         let stop_ids : map::set<str> = map::str_hash();
-        self.stop_times.items() { |trip_id, stop_times|
+        for self.stop_times.each() { |trip_id, stop_times|
             let trip = self.trips.get(trip_id);
             let route = self.routes.get(trip.route_id);
             if route.agency_id == id {
@@ -714,7 +715,7 @@ impl of feedaccess for feed {
         };
         let mut s = [];
         vec::reserve(s, stop_ids.size());
-        stop_ids.keys() { |stop_id|
+        for stop_ids.each_key() { |stop_id|
             s += [ stop_id ];
         }
         ret s;
@@ -723,7 +724,7 @@ impl of feedaccess for feed {
         let mut res = #fmt("%u agencies, %u stops, %u routes, %u trips, %u stop_times, %u calendars, %u calendar_dates\n",
             self.agencies.size(), self.stops.size(), self.routes.size(), self.trips.size(), self.stop_times.size(),
             self.calendars.size(), self.calendar_dates.size());
-        self.agencies.items() { |id,agency|
+        for self.agencies.each() { |id,agency|
             let stop_ids = self.stops_for_agency(id);
             let stops = self.lookup_stops(stop_ids);
             let bounds = self.stops_bbox(stops);
@@ -739,7 +740,7 @@ impl of feedaccess for feed {
     fn routes_for_agency(id: str) -> [ @route ] {
         let mut routes = [];
         vec::reserve(routes, self.routes.size());
-        self.routes.values() { |route|
+        for self.routes.each_value() { |route|
             if route.agency_id == id {
                 routes += [ route ];
             }
@@ -764,7 +765,7 @@ impl of feedaccess for feed {
         let active : map::set<str> = map::str_hash();
         // first, we got through and find all the calendar events 
         // active on this week day
-        self.calendars.values() { |calendar|
+        for self.calendars.each_value() { |calendar|
             alt vec::position_elem(calendar.weekdays, day) {
                 some(d) { 
                     map::set_add(active, calendar.service_id);
@@ -772,7 +773,7 @@ impl of feedaccess for feed {
                 none {}
             }
         }
-        self.calendar_dates.values() { |exceptions| 
+        for self.calendar_dates.each_value() { |exceptions| 
             for vec::each(exceptions) { |e|
                 if e.date != date {
                     cont;
@@ -789,7 +790,7 @@ impl of feedaccess for feed {
         }
         let mut res = [];
         vec::reserve(res, active.size());
-        active.keys() { |service_id|
+        for active.each_key() { |service_id|
             res += [ service_id ];
         }
         ret res;
@@ -800,7 +801,7 @@ impl of feedaccess for feed {
             map::set_add(ids, s);
         }
         let mut trips = [];
-        self.trips.values() { |trip|
+        for self.trips.each_value() { |trip|
             if ids.contains_key(trip.service_id) {
                 trips += [ trip.id ];
             }
@@ -810,7 +811,7 @@ impl of feedaccess for feed {
     fn bbox() -> rectangle {
         let mut stops = [];
         vec::reserve(stops, self.stops.size());
-        self.stops.values() { |stop|
+        for self.stops.each_value() { |stop|
             stops += [ stop ];
         }
         self.stops_bbox(stops)
