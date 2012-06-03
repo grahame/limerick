@@ -6,8 +6,6 @@
   (defn in-data [fname]
     (str data_dir "/" fname))
   (defn open-csv [fname]
-    ; (doseq [line (csv/read-csv in-file)]
-    ;   (println line))
     (println fname) 
     (with-open [in-file (io/reader (in-data fname))]
       (let [lines (csv/read-csv in-file)]
