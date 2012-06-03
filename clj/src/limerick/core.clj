@@ -11,8 +11,7 @@
       (let [lines (csv/read-csv in-file)]
         (let [header (first lines)]
           (doseq [line (rest lines)]
-            (let [xx (zipmap header line)]
-              (println xx)))))))
+            (zipmap header line))))))
   (open-csv "agency.txt")
   (open-csv "calendar.txt")
   (open-csv "calendar_dates.txt")
