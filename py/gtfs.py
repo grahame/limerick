@@ -13,6 +13,13 @@ class LoaderMeta(type):
         return cls
 
 class Loader(metaclass=LoaderMeta):
+    def __repr__(self):
+        if hasattr(self, 'reprs'):
+            s = [ "%s=%s" % (t, getattr(self, t)) for t in getattr(self, 'reprs')]
+            return '%s(%s)' % (self.__class__.__name__, ','.join(s))
+        else:
+            return super(Loader, self).__repr__()
+
     @classmethod
     def load(cls, data_dir):
         # find our file
@@ -40,8 +47,15 @@ class Loader(metaclass=LoaderMeta):
 
 class Agency(Loader):
     filename = "agency.txt"
+    reprs = ('id', 'name')
     def __init__(self, agency_name, agency_url, agency_timezone, agency_id=None, agency_lang=None, agency_phone=None, agency_fare_url=None):
-        print(agency_name, agency_url, agency_timezone)
+        self.id = agency_id or "default"
+        self.name = agency_name
+        self.url = agency_url
+        self.timezone = agency_timezone
+        self.lang = agency_lang
+        self.phone = agency_phone
+        self.fare_url = agency_fare_url
 
 class GTFS:
     def __init__(self, data_dir):
