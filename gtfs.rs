@@ -748,8 +748,8 @@ impl of feedaccess for feed {
         ret routes;
     }
     fn stops_bbox(stops: [@stop] ) -> rectangle {
-        let mut lat_max = float::neg_infinity, lat_min = float::infinity;
-        let mut lon_max = float::neg_infinity, lon_min = float::infinity;
+        let mut lat_max : float = float::neg_infinity, lat_min : float = float::infinity;
+        let mut lon_max : float = float::neg_infinity, lon_min : float = float::infinity;
         for vec::each(stops) { |stop|
             lat_min = float::fmin(lat_min, stop.pt.lat);
             lon_min = float::fmin(lon_min, stop.pt.lon);

@@ -18,8 +18,7 @@
   (open-csv "routes.txt")
   (open-csv "stop_times.txt")
   (open-csv "stops.txt")
-  (open-csv "trips.txt")
-)
+  (open-csv "trips.txt"))
 
 (defn -main [data_dir] 
   (println data_dir)
