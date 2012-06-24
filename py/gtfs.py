@@ -33,7 +33,10 @@ class Loader(metaclass=LoaderMeta):
             # find required headers
             indices = []
             for arg in reqd:
-                indices.append(header.index(arg))
+                try:
+                    indices.append(header.index(arg))
+                except ValueError:
+                    raise Exception("required header column %s missing" % arg)
             # find optional headers
             optdict = {}
             for arg in opt:
