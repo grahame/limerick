@@ -191,21 +191,21 @@ class Trip(Loader):
         res['block_id'] = block_id
         res['shape_id'] = shape_id
 
-class HMS:
-    "noon-twelve hour time"
-    def __init__(self, s):
-        self.h, self.m, self.s = map(int, s.split(':'))
-        self.secs = self.h * 3600 + self.m * 60 + self.s
-
 class StopTime(Loader):
     filename = "stop_times.txt"
     VisitType = mk_enum('VisitType', 'scheduled', 'unavailable', 'phoneahead', 'coordinate')
     reprs = ('trip_id', 'arrival_time', 'stop_sequence')
     @classmethod
+    def hms(cls, s):
+        "convert a noon minus twelve hour time to seconds"
+        h, m, s = map(int, s.split(':'))
+        return h * 3600 + m * 60 + s
+
+    @classmethod
     def create(cls, res, trip_id, arrival_time, departure_time, stop_id, stop_sequence, stop_headsign=None, pickup_type=None, drop_off_type=None, shape_dist_travelled=None):
         res['trip_id'] = trip_id
-        res['arrival_time'] = HMS(arrival_time)
-        res['departure_time'] = HMS(departure_time)
+        res['arrival_time'] = StopTime.hms(arrival_time)
+        res['departure_time'] = StopTime.hms(departure_time)
         res['stop_id'] = stop_id
         res['stop_sequence'] = int(stop_sequence)
         assert(res['stop_sequence'] >= 0)
@@ -274,9 +274,9 @@ class GTFS:
         for cls in sorted(LoaderMeta.loaders, key=lambda cls: cls.__name__):
             nm = cls.__name__
             print("loading %s" % (nm), file=sys.stderr)
-            objs = cls.load(data_dir)
-            setattr(self, nm, objs)
-            print("... (%d loaded)" % (len(objs)), file=sys.stderr)
+            slab = cls.load(data_dir)
+            setattr(self, nm, slab)
+            print("... (%d loaded)" % (len(slab)), file=sys.stderr)
 
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
