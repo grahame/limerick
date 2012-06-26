@@ -12,28 +12,6 @@ class LoaderMeta(type):
         LoaderMeta.loaders.add(cls)
         return cls
 
-class Slab:
-    def __init__(self, name):
-        self.name = name
-        self.fields = None
-        self.rows = []
-
-    def append(self, dct):
-        if self.fields is None:
-            self.fields = list(dct.keys())
-            self.fields.sort()
-            self.named_tuple = collections.namedtuple(self.name, self.fields)
-        self.rows.append([dct[f] for f in self.fields])
-
-    def __len__(self):
-        return len(self.rows)
-
-    def __iter__(self):
-        def it():
-            for row in self.rows:
-                yield self.named_tuple(*row)
-        return it()
-
 class Loader(metaclass=LoaderMeta):
     def __repr__(self):
         if hasattr(self, 'reprs'):
@@ -70,13 +48,15 @@ class Loader(metaclass=LoaderMeta):
                 except ValueError:
                     pass
             # create and yield back objects
-            args = [None] * len(indices)
-            slab = Slab(cls.__name__)
             res = {}
+            fields = named_tuple = None
             for row in reader:
                 cls.create(res, *[row[t] for t in indices], **(dict([(t, row[optdict[t]]) for t in optdict])))
-                slab.append(res)
-            return slab
+                if fields is None:
+                    fields = list(res.keys())
+                    fields.sort()
+                    named_tuple = collections.namedtuple(cls.__name__+"_", fields)
+                yield named_tuple(*[res[t] for t in fields])
 
 class Agency(Loader):
     filename = "agency.txt"
@@ -274,9 +254,9 @@ class GTFS:
         for cls in sorted(LoaderMeta.loaders, key=lambda cls: cls.__name__):
             nm = cls.__name__
             print("loading %s" % (nm), file=sys.stderr)
-            slab = cls.load(data_dir)
-            setattr(self, nm, slab)
-            print("... (%d loaded)" % (len(slab)), file=sys.stderr)
+            objs = list(cls.load(data_dir))
+            setattr(self, nm, objs)
+            print("... (%d loaded)" % (len(objs)), file=sys.stderr)
 
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
