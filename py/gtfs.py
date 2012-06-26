@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import inspect, sys, os, csv
+import inspect, sys, os, csv, datetime, collections
 
 class LoaderMeta(type):
     loaders = set()
@@ -11,6 +11,28 @@ class LoaderMeta(type):
         cls = type.__new__(cls, className, baseClasses, dictOfMethods)
         LoaderMeta.loaders.add(cls)
         return cls
+
+class Slab:
+    def __init__(self, name):
+        self.name = name
+        self.fields = None
+        self.rows = []
+
+    def append(self, dct):
+        if self.fields is None:
+            self.fields = list(dct.keys())
+            self.fields.sort()
+            self.named_tuple = collections.namedtuple(self.name, self.fields)
+        self.rows.append([dct[f] for f in self.fields])
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __iter__(self):
+        def it():
+            for row in self.rows:
+                yield self.named_tuple(*row)
+        return it()
 
 class Loader(metaclass=LoaderMeta):
     def __repr__(self):
@@ -25,9 +47,11 @@ class Loader(metaclass=LoaderMeta):
         # find our file
         fname = os.path.join(data_dir, cls.filename)
         with open(fname) as fd:
-            args = inspect.getfullargspec(cls.__init__)
+            args = inspect.getfullargspec(cls.create)
             ndefs = len(args.defaults or [])
-            reqd = args.args[1:-ndefs] # skip self argument
+            assert(args.args[0] == 'cls')
+            assert(args.args[1] == 'res')
+            reqd = args.args[2:-ndefs] # skip self argument
             opt = args.args[-ndefs:]
             reader = csv.reader(fd)
             header = [t.lower().strip() for t in next(reader)] # some feeds have spaces, etc; normalise somewhat
@@ -47,23 +71,42 @@ class Loader(metaclass=LoaderMeta):
                     pass
             # create and yield back objects
             args = [None] * len(indices)
+            slab = Slab(cls.__name__)
+            res = {}
             for row in reader:
-                yield cls(*[row[t] for t in indices], **(dict([(t, row[optdict[t]]) for t in optdict])))
+                cls.create(res, *[row[t] for t in indices], **(dict([(t, row[optdict[t]]) for t in optdict])))
+                slab.append(res)
+            return slab
 
 class Agency(Loader):
     filename = "agency.txt"
     reprs = ('agency_id', 'name')
-    def __init__(self, agency_name, agency_url, agency_timezone, agency_id=None, agency_lang=None, agency_phone=None, agency_fare_url=None):
-        self.agency_id = agency_id or "default"
-        self.name = agency_name
-        self.url = agency_url
-        self.timezone = agency_timezone
-        self.lang = agency_lang
-        self.phone = agency_phone
-        self.fare_url = agency_fare_url
+    @classmethod
+    def create(cls, res, agency_name, agency_url, agency_timezone, agency_id=None, agency_lang=None, agency_phone=None, agency_fare_url=None):
+        res['agency_id'] = agency_id or "default"
+        res['name'] = agency_name
+        res['url'] = agency_url
+        res['timezone'] = agency_timezone
+        res['lang'] = agency_lang
+        res['phone'] = agency_phone
+        res['fare_url'] = agency_fare_url
 
 def mk_enum(type_name, *args):
-    return type(type_name, (), dict((t, i) for (i, t) in enumerate(args)))
+    names = []
+    for arg in args:
+        success = False
+        for i in range(1, len(arg)):
+            short = arg[:i]
+            if short not in names:
+                names.append(short)
+                success = True
+                break
+        if not success:
+            raise Exception("non-unique name in enum")
+    enum = type(type_name, (), dict(zip(args, names)))
+    enum.names = args
+    enum.values = names
+    return enum
 
 def parse_gtfs_date(s):
     return datetime.datetime.strptime(s, "%Y%m%d").date()
@@ -73,90 +116,100 @@ class Stop(Loader):
     reprs = ('stop_id', 'name')
     LocationType = mk_enum('LocationType', 'stop', 'station')
     WheelchairBoarding = mk_enum('WheelchairBoarding', 'unknown', 'possibly', 'none')
-    def __init__(self, stop_id, stop_name, stop_lat, stop_lon, stop_code=None, stop_desc=None, zone_id=None, stop_url=None, location_type=None, parent_station=None, stop_timezone=None, wheelchair_boarding=None):
-        self.stop_id = stop_id
-        self.name = stop_name
-        self.latlng = map(float, (stop_lat, stop_lon))
-        self.code = stop_code
-        self.desc = stop_desc
-        self.zone_id = zone_id
-        self.url = stop_url
+    @classmethod
+    def create(cls, res, stop_id, stop_name, stop_lat, stop_lon, stop_code=None, stop_desc=None, zone_id=None, stop_url=None, location_type=None, parent_station=None, stop_timezone=None, wheelchair_boarding=None):
+        res['stop_id'] = stop_id
+        res['name'] = stop_name
+        res['latlng'] = map(float, (stop_lat, stop_lon))
+        res['code'] = stop_code
+        res['desc'] = stop_desc
+        res['zone_id'] = zone_id
+        res['url'] = stop_url
         if location_type == '1':
-            self.location_type = Stop.LocationType.station
+            res['location_type']= Stop.LocationType.station
         else:
-            self.location_type = Stop.LocationType.stop
-        self.parent_station = parent_station
-        self.timezone = stop_timezone
+            res['location_type']= Stop.LocationType.stop
+        res['parent_station'] = parent_station
+        res['timezone'] = stop_timezone
         if wheelchair_boarding == '1':
-            self.wheelchair_boarding = Stop.WheelchairBoarding.possibly
+            res['wheelchair_boarding'] = Stop.WheelchairBoarding.possibly
         elif wheelchair_boarding == '2':
-            self.wheelchair_boarding = Stop.WheelchairBoarding.none
+            res['wheelchair_boarding'] = Stop.WheelchairBoarding.none
         else:
-            self.wheelchair_boarding = Stop.WheelchairBoarding.unknown
+            res['wheelchair_boarding'] = Stop.WheelchairBoarding.unknown
 
 class Route(Loader):
     filename = "routes.txt"
     RouteType = mk_enum('RouteType', 'tram', 'subway', 'rail', 'bus', 'ferry', 'cablecar', 'gondola', 'funicular')
-    def __init__(self, route_id, route_short_name, route_long_name, route_type, agency_id=None, route_desc=None, route_url=None, route_color=None, route_text_color=None):
-        self.route_id = route_id
-        self.short_name = route_short_name
-        self.long_name = route_long_name
+    reprs = ('route_id', 'short_name')
+    @classmethod
+    def create(cls, res, route_id, route_short_name, route_long_name, route_type, agency_id=None, route_desc=None, route_url=None, route_color=None, route_text_color=None):
+        res['route_id'] = route_id
+        res['short_name'] = route_short_name
+        res['long_name'] = route_long_name
         if route_type == '0':
-            self.type = Route.RouteType.tram
+            res['type'] = Route.RouteType.tram
         elif route_type == '1':
-            self.type = Route.RouteType.subway
+            res['type'] = Route.RouteType.subway
         elif route_type == '2':
-            self.type = Route.RouteType.rail
+            res['type'] = Route.RouteType.rail
         elif route_type == '3':
-            self.type = Route.RouteType.bus
+            res['type'] = Route.RouteType.bus
         elif route_type == '4':
-            self.type = Route.RouteType.ferry
+            res['type'] = Route.RouteType.ferry
         elif route_type == '5':
-            self.type = Route.RouteType.cablecar
+            res['type'] = Route.RouteType.cablecar
         elif route_type == '6':
-            self.type = Route.RouteType.gondola
+            res['type'] = Route.RouteType.gondola
         elif route_type == '7':
-            self.type = Route.RouteType.funicular
+            res['type'] = Route.RouteType.funicular
         else:
             raise Exception("Invalid route_type: %s" % route_type)
-        self.agency_id = agency_id
-        self.desc = route_desc
-        self.url = route_url
-        self.color = route_color
-        self.text_color = route_text_color
+        res['agency_id'] = agency_id
+        res['desc'] = route_desc
+        res['url'] = route_url
+        res['color'] = route_color
+        res['text_color'] = route_text_color
 
 class Trip(Loader):
     filename = "trips.txt"
     TripDirection = mk_enum('TripDirection', 'undefined', 'inbound', 'outbound')
-    def __init__(self, route_id, service_id, trip_id, trip_headsign=None, trip_short_name=None, direction_id=None, block_id=None, shape_id=None):
-        self.route_id = route_id
-        self.service_id = service_id
-        self.trip = trip_id
-        self.headsign = trip_headsign
-        self.short_name = trip_short_name
+    reprs = ('route_id', 'service_id', 'trip', 'headsign')
+    @classmethod
+    def create(cls, res, route_id, service_id, trip_id, trip_headsign=None, trip_short_name=None, direction_id=None, block_id=None, shape_id=None):
+        res['route_id'] = route_id
+        res['service_id'] = service_id
+        res['trip'] = trip_id
+        res['headsign'] = trip_headsign
+        res['short_name'] = trip_short_name
         if direction_id == '0':
-            self.direction = Trip.TripDirection.outbound
+            res['direction'] = Trip.TripDirection.outbound
         elif direction_id == '1':
-            self.direction = Trip.TripDirection.inbound
+            res['direction'] = Trip.TripDirection.inbound
         else:
-            self.direction = Trip.TripDirection.undefined
-        self.block_id = block_id
-        self.shape_id = shape_id
+            direction = Trip.TripDirection.undefined
+        res['block_id'] = block_id
+        res['shape_id'] = shape_id
+
+class HMS:
+    "noon-twelve hour time"
+    def __init__(self, s):
+        self.h, self.m, self.s = map(int, s.split(':'))
+        self.secs = self.h * 3600 + self.m * 60 + self.s
 
 class StopTime(Loader):
     filename = "stop_times.txt"
     VisitType = mk_enum('VisitType', 'scheduled', 'unavailable', 'phoneahead', 'coordinate')
-    class HMS:
-        def __init__(self, s):
-            self.h, self.m, self.s = map(int, s.split(':'))
-    def __init__(self, trip_id, arrival_time, departure_time, stop_id, stop_sequence, stop_headsign=None, pickup_type=None, drop_off_type=None, shape_dist_travelled=None):
-        self.trip_id = trip_id
-        self.arrival_time = StopTime.HMS(arrival_time)
-        self.departure_time = StopTime.HMS(departure_time)
-        self.stop_id = stop_id
-        self.stop_sequence  = int(stop_sequence)
-        assert(self.stop_sequence >= 0)
-        self.headsign = stop_headsign
+    reprs = ('trip_id', 'arrival_time', 'stop_sequence')
+    @classmethod
+    def create(cls, res, trip_id, arrival_time, departure_time, stop_id, stop_sequence, stop_headsign=None, pickup_type=None, drop_off_type=None, shape_dist_travelled=None):
+        res['trip_id'] = trip_id
+        res['arrival_time'] = HMS(arrival_time)
+        res['departure_time'] = HMS(departure_time)
+        res['stop_id'] = stop_id
+        res['stop_sequence'] = int(stop_sequence)
+        assert(res['stop_sequence'] >= 0)
+        res['headsign'] = stop_headsign
         def visit_type(s):
             if s == '1':
                 return StopTime.VisitType.unavailable
@@ -166,53 +219,65 @@ class StopTime(Loader):
                 return StopTime.VisitType.coordinate
             else:
                 return StopTime.VisitType.scheduled
-        self.pickup_type = visit_type(pickup_type)
-        self.drop_off_type = visit_type(drop_off_type)
-        self.shape_dist_travelled = shape_dist_travelled
+        res['pickup_type'] = visit_type(pickup_type)
+        res['drop_off_type'] = visit_type(drop_off_type)
+        res['shape_dist_travelled'] = shape_dist_travelled
 
-class Calendar:
+class Calendar(Loader):
     filename = 'calendar.txt'
-    def __init__(self, service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date):
-        self.service_id = service_id
-        def active(s):
-            if s == '1':
-                return True
-            elif s == '0':
-                return False
-            else:
-                raise Exception("invalid service activity: '%s'" % s)
-        self.monday = active(monday)
-        self.tuesday = active(tuesday)
-        self.wednesday = active(wednesday)
-        self.thursday = active(thursday)
-        self.friday = active(friday)
-        self.saturday = active(saturday)
-        self.sunday = active(sunday)
-        self.start_date = parse_gtfs_date(start_date)
-        self.end_date = parse_gtfs_date(end_date)
+    Day = mk_enum('Day', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday')
+    reprs = ('service_id', 'active')
+    @classmethod
+    def day_from_datetime(cls, dt):
+        wd = dt.weekday()
+        val = Calendar.Day.values[wd] # 0 - Monday
+        print(dt, wd, val)
+        return val
 
-class CalendarDates:
+    @classmethod
+    def create(cls, res, service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date):
+        res['service_id'] = service_id
+        res['active'] = set()
+        def active(e, s):
+            if s == '1':
+                res['active'].add(e)
+                return True
+            elif s != '0':
+                raise Exception("invalid service activity: '%s'" % s)
+        active(Calendar.Day.monday, monday)
+        active(Calendar.Day.tuesday, tuesday)
+        active(Calendar.Day.wednesday, wednesday)
+        active(Calendar.Day.thursday, thursday)
+        active(Calendar.Day.friday, friday)
+        active(Calendar.Day.saturday, saturday)
+        active(Calendar.Day.sunday, sunday)
+        res['start_date'] = parse_gtfs_date(start_date)
+        res['end_date'] = parse_gtfs_date(end_date)
+
+class CalendarDates(Loader):
     filename = 'calendar_dates.txt'
     ExceptionType = mk_enum('ExceptionType', 'add', 'remove')
-    def __init__(self, service_id, date, exception_type):
-        self.service_id = service_id
-        self.date = parse_gtfs_date(date)
+    reprs = ('service_id', 'date')
+    @classmethod
+    def create(cls, res, service_id, date, exception_type):
+        res['service_id'] = service_id
+        res['date'] = parse_gtfs_date(date)
         if exception_type == '1':
-            self.exception = ExceptionType.add
+            res['exception'] = CalendarDates.ExceptionType.add
         elif exception_type == '2':
-            self.exception = ExceptionType.remove
+            res['exception'] = CalendarDates.ExceptionType.remove
         else:
             raise Exception("invalid CalendarDate exception_type '%s'" % exception_type)
 
 class GTFS:
     def __init__(self, data_dir):
-        for cls in LoaderMeta.loaders:
+        for cls in sorted(LoaderMeta.loaders, key=lambda cls: cls.__name__):
             nm = cls.__name__
-            objs = list(cls.load(data_dir))
+            print("loading %s" % (nm), file=sys.stderr)
+            objs = cls.load(data_dir)
             setattr(self, nm, objs)
+            print("... (%d loaded)" % (len(objs)), file=sys.stderr)
 
 if __name__ == '__main__':
+    print("loading..", file=sys.stderr)
     gtfs = GTFS(sys.argv[1])
-    print(gtfs.Agency)
-
-
