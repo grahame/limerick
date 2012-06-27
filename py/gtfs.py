@@ -159,7 +159,7 @@ class Trip(Loader):
     def create(cls, res, route_id, service_id, trip_id, trip_headsign=None, trip_short_name=None, direction_id=None, block_id=None, shape_id=None):
         res['route_id'] = route_id
         res['service_id'] = service_id
-        res['trip'] = trip_id
+        res['trip_id'] = trip_id
         res['headsign'] = trip_headsign
         res['short_name'] = trip_short_name
         if direction_id == '0':
@@ -180,6 +180,14 @@ class StopTime(Loader):
         "convert a noon minus twelve hour time to seconds"
         h, m, s = map(int, s.split(':'))
         return h * 3600 + m * 60 + s
+    
+    @classmethod
+    def timestr(cls, s):
+        h = s // 3600
+        s %= 3600
+        m = s // 60
+        s %= 60
+        return "%.2d:%.2d:%.2d" % (h, m, s)
 
     @classmethod
     def create(cls, res, trip_id, arrival_time, departure_time, stop_id, stop_sequence, stop_headsign=None, pickup_type=None, drop_off_type=None, shape_dist_travelled=None):
@@ -211,7 +219,6 @@ class Calendar(Loader):
     def day_from_datetime(cls, dt):
         wd = dt.weekday()
         val = Calendar.Day.values[wd] # 0 - Monday
-        print(dt, wd, val)
         return val
 
     @classmethod
@@ -257,6 +264,17 @@ class GTFS:
             objs = list(cls.load(data_dir))
             setattr(self, nm, objs)
             print("... (%d loaded)" % (len(objs)), file=sys.stderr)
+        self.trip_stop_times = {}
+        for stop_time in self.StopTime:
+            trip_id = stop_time.trip_id
+            if trip_id not in self.trip_stop_times:
+                self.trip_stop_times[trip_id] = []
+            self.trip_stop_times[trip_id].append(stop_time)
+        for trip_id in self.trip_stop_times:
+            self.trip_stop_times[trip_id].sort(key=lambda x: x.stop_sequence)
+
+    def stop_times_for_trip_id(self, trip_id):
+        return self.trip_stop_times[trip_id]
 
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
