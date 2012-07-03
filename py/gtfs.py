@@ -272,6 +272,16 @@ class CalendarDates(Loader):
             raise Exception("invalid CalendarDate exception_type '%s'" % exception_type)
 
 class GTFS:
+    def __init__(self, data_dir):
+        self.trip_stop_times = {}
+        for stop_time in self.StopTime:
+            trip_id = stop_time.trip_id
+            if trip_id not in self.trip_stop_times:
+                self.trip_stop_times[trip_id] = []
+            self.trip_stop_times[trip_id].append(stop_time)
+        for trip_id in self.trip_stop_times:
+            self.trip_stop_times[trip_id].sort(key=lambda x: x.stop_sequence)
+
     def stop_times_for_trip_id(self, trip_id):
         return self.trip_stop_times[trip_id]
     
@@ -327,21 +337,15 @@ class GTFSDataset(GTFS):
             objs = list(cls.load(data_dir))
             setattr(self, nm, objs)
             print("... (%d loaded)" % (len(objs)), file=sys.stderr)
-        self.trip_stop_times = {}
-        for stop_time in self.StopTime:
-            trip_id = stop_time.trip_id
-            if trip_id not in self.trip_stop_times:
-                self.trip_stop_times[trip_id] = []
-            self.trip_stop_times[trip_id].append(stop_time)
-        for trip_id in self.trip_stop_times:
-            self.trip_stop_times[trip_id].sort(key=lambda x: x.stop_sequence)
+        super(GTFS, self).__init__()
 
 class GTFSView(GTFS):
-    "view of a GTFS dataset, reduced to one agency"
-    def __init__(self, parent, agency_id):
-        self.Agency = [t for t in parent.Agency if t.agency_id == agency_id]
+    "view of a GTFS dataset, reduced to one or more agency"
+    def __init__(self, parent, *agency_ids):
+        agency_ids = set(agency_ids)
+        self.Agency = [t for t in parent.Agency if t.agency_id in agency_ids]
         assert(len(self.Agency) == 1)
-        self.Route = [t for t in parent.Route if t.agency_id == agency_id]
+        self.Route = [t for t in parent.Route if t.agency_id in agency_ids]
         route_ids = set((t.route_id for t in self.Route))
         self.Trip = [t for t in parent.Trip if t.route_id in route_ids]
         trip_ids = set((t.trip_id for t in self.Trip))
@@ -353,6 +357,7 @@ class GTFSView(GTFS):
         self.Calendar = [t for t in parent.Calendar if t.service_id in service_ids]
         self.CalendarDates = [t for t in parent.CalendarDates if t.service_id in service_ids]
         self.Stop = [t for t in parent.Stop if t.stop_id in stop_ids]
+        super(GTFS, self).__init__()
 
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
