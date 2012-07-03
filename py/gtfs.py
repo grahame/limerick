@@ -272,22 +272,6 @@ class CalendarDates(Loader):
             raise Exception("invalid CalendarDate exception_type '%s'" % exception_type)
 
 class GTFS:
-    def __init__(self, data_dir):
-        for cls in sorted(LoaderMeta.loaders, key=lambda cls: cls.__name__):
-            nm = cls.__name__
-            print("loading %s" % (nm), file=sys.stderr)
-            objs = list(cls.load(data_dir))
-            setattr(self, nm, objs)
-            print("... (%d loaded)" % (len(objs)), file=sys.stderr)
-        self.trip_stop_times = {}
-        for stop_time in self.StopTime:
-            trip_id = stop_time.trip_id
-            if trip_id not in self.trip_stop_times:
-                self.trip_stop_times[trip_id] = []
-            self.trip_stop_times[trip_id].append(stop_time)
-        for trip_id in self.trip_stop_times:
-            self.trip_stop_times[trip_id].sort(key=lambda x: x.stop_sequence)
-
     def stop_times_for_trip_id(self, trip_id):
         return self.trip_stop_times[trip_id]
     
@@ -334,8 +318,45 @@ class GTFS:
             if self.route_id in routes and self.service_id in service_ids:
                 yield trip
 
+class GTFSDataset(GTFS):
+    "gtfs dataset from disk files"
+    def __init__(self, data_dir):
+        for cls in sorted(LoaderMeta.loaders, key=lambda cls: cls.__name__):
+            nm = cls.__name__
+            print("loading %s" % (nm), file=sys.stderr)
+            objs = list(cls.load(data_dir))
+            setattr(self, nm, objs)
+            print("... (%d loaded)" % (len(objs)), file=sys.stderr)
+        self.trip_stop_times = {}
+        for stop_time in self.StopTime:
+            trip_id = stop_time.trip_id
+            if trip_id not in self.trip_stop_times:
+                self.trip_stop_times[trip_id] = []
+            self.trip_stop_times[trip_id].append(stop_time)
+        for trip_id in self.trip_stop_times:
+            self.trip_stop_times[trip_id].sort(key=lambda x: x.stop_sequence)
+
+class GTFSView(GTFS):
+    "view of a GTFS dataset, reduced to one agency"
+    def __init__(self, parent, agency_id):
+        self.Agency = [t for t in parent.Agency if t.agency_id == agency_id]
+        assert(len(self.Agency) == 1)
+        self.Route = [t for t in parent.Route if t.agency_id == agency_id]
+        route_ids = set((t.route_id for t in self.Route))
+        self.Trip = [t for t in parent.Trip if t.route_id in route_ids]
+        trip_ids = set((t.trip_id for t in self.Trip))
+        shape_ids = set(filter(None, (t.shape_id for t in self.Trip)))
+        self.Shape = [t for t in parent.Shape if t.shape_id in shape_ids]
+        self.StopTime = [t for t in parent.StopTime if t.trip_id in trip_ids]
+        stop_ids = set((t.stop_id for t in self.StopTime))
+        service_ids = set((t.service_id for t in self.Trip))
+        self.Calendar = [t for t in parent.Calendar if t.service_id in service_ids]
+        self.CalendarDates = [t for t in parent.CalendarDates if t.service_id in service_ids]
+        self.Stop = [t for t in parent.Stop if t.stop_id in stop_ids]
+
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
-    transit = GTFS(sys.argv[1])
-    print("bounds: (lat,lng) ", transit.bounds())
+    transit = GTFSDataset(sys.argv[1])
+    view = GTFSView(transit, "1")
+    print("bounds: (lat,lng) ", view.bounds())
 
