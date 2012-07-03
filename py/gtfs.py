@@ -271,8 +271,8 @@ class CalendarDates(Loader):
         else:
             raise Exception("invalid CalendarDate exception_type '%s'" % exception_type)
 
-class GTFS:
-    def __init__(self, data_dir):
+class GTFSBase:
+    def __init__(self):
         self.trip_stop_times = {}
         for stop_time in self.StopTime:
             trip_id = stop_time.trip_id
@@ -316,19 +316,12 @@ class GTFS:
                     pass
         return service_ids
 
-    def agency_routes(self, agency_id):
-        routes = {}
-        for route in self.Route:
-            if route.agency_id == agency_id:
-                routes[route.route_id] = route
-        return routes
-
     def running_trips(self, routes, service_ids):
         for trip in self.Trip:
-            if self.route_id in routes and self.service_id in service_ids:
+            if trip.route_id in routes and trip.service_id in service_ids:
                 yield trip
 
-class GTFSDataset(GTFS):
+class GTFS(GTFSBase):
     "gtfs dataset from disk files"
     def __init__(self, data_dir):
         for cls in sorted(LoaderMeta.loaders, key=lambda cls: cls.__name__):
@@ -339,7 +332,7 @@ class GTFSDataset(GTFS):
             print("... (%d loaded)" % (len(objs)), file=sys.stderr)
         super(GTFS, self).__init__()
 
-class GTFSView(GTFS):
+class GTFSView(GTFSBase):
     "view of a GTFS dataset, reduced to one or more agency"
     def __init__(self, parent, *agency_ids):
         agency_ids = set(agency_ids)
@@ -357,11 +350,11 @@ class GTFSView(GTFS):
         self.Calendar = [t for t in parent.Calendar if t.service_id in service_ids]
         self.CalendarDates = [t for t in parent.CalendarDates if t.service_id in service_ids]
         self.Stop = [t for t in parent.Stop if t.stop_id in stop_ids]
-        super(GTFS, self).__init__()
+        super(GTFSView, self).__init__()
 
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
-    transit = GTFSDataset(sys.argv[1])
+    transit = GTFS(sys.argv[1])
     view = GTFSView(transit, "1")
     print("bounds: (lat,lng) ", view.bounds())
 
