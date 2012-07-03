@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import inspect, sys, os, csv, datetime, collections
+import inspect, sys, os, csv, datetime, collections, itertools
 
 class LoaderMeta(type):
     loaders = set()
@@ -13,6 +13,11 @@ class LoaderMeta(type):
         return cls
 
 class Loader(metaclass=LoaderMeta):
+    @classmethod
+    def set_not_none(cls, d, k, v):
+        if v is not None:
+            d[k] = v
+
     def __repr__(self):
         if hasattr(self, 'reprs'):
             s = [ "%s=%s" % (t, getattr(self, t)) for t in getattr(self, 'reprs')]
@@ -91,6 +96,16 @@ def mk_enum(type_name, *args):
 def parse_gtfs_date(s):
     return datetime.datetime.strptime(s, "%Y%m%d").date()
 
+class Shape(Loader):
+    filename = "shapes.txt"
+    @classmethod
+    def create(cls, res, shape_id, shape_pt_lat, shape_pt_lon, shape_pt_sequence, shape_dist_travelled=None):
+        res['shape_id'] = shape_id
+        res['latlng'] = (float(shape_pt_lat), float(shape_pt_lon))
+        res['sequence'] = int(shape_pt_sequence)
+        assert(res['sequence'] >= 0)
+        cls.set_not_none(res, 'dist_travelled', shape_dist_travelled)
+
 class Stop(Loader):
     filename = "stops.txt"
     reprs = ('stop_id', 'name')
@@ -100,17 +115,17 @@ class Stop(Loader):
     def create(cls, res, stop_id, stop_name, stop_lat, stop_lon, stop_code=None, stop_desc=None, zone_id=None, stop_url=None, location_type=None, parent_station=None, stop_timezone=None, wheelchair_boarding=None):
         res['stop_id'] = stop_id
         res['name'] = stop_name
-        res['latlng'] = map(float, (stop_lat, stop_lon))
-        res['code'] = stop_code
-        res['desc'] = stop_desc
-        res['zone_id'] = zone_id
-        res['url'] = stop_url
+        res['latlng'] = list(map(float, (stop_lat, stop_lon)))
+        cls.set_not_none(res, 'code', stop_code)
+        cls.set_not_none(res, 'desc', stop_desc)
+        cls.set_not_none(res, 'zone_id', zone_id)
+        cls.set_not_none(res, 'url', stop_url)
         if location_type == '1':
             res['location_type']= Stop.LocationType.station
         else:
             res['location_type']= Stop.LocationType.stop
-        res['parent_station'] = parent_station
-        res['timezone'] = stop_timezone
+        cls.set_not_none(res, 'parent_station', parent_station)
+        cls.set_not_none(res, 'timezone', stop_timezone)
         if wheelchair_boarding == '1':
             res['wheelchair_boarding'] = Stop.WheelchairBoarding.possibly
         elif wheelchair_boarding == '2':
@@ -145,11 +160,11 @@ class Route(Loader):
             res['type'] = Route.RouteType.funicular
         else:
             raise Exception("Invalid route_type: %s" % route_type)
-        res['agency_id'] = agency_id
-        res['desc'] = route_desc
-        res['url'] = route_url
-        res['color'] = route_color
-        res['text_color'] = route_text_color
+        res['agency_id'] = agency_id or "default"
+        cls.set_not_none(res, 'desc', route_desc)
+        cls.set_not_none(res, 'url', route_url)
+        cls.set_not_none(res, 'color', route_color)
+        cls.set_not_none(res, 'text_color', route_text_color)
 
 class Trip(Loader):
     filename = "trips.txt"
@@ -160,16 +175,16 @@ class Trip(Loader):
         res['route_id'] = route_id
         res['service_id'] = service_id
         res['trip_id'] = trip_id
-        res['headsign'] = trip_headsign
-        res['short_name'] = trip_short_name
+        cls.set_not_none(res, 'headsign', trip_headsign)
+        cls.set_not_none(res, 'short_name', trip_short_name)
         if direction_id == '0':
             res['direction'] = Trip.TripDirection.outbound
         elif direction_id == '1':
             res['direction'] = Trip.TripDirection.inbound
         else:
             direction = Trip.TripDirection.undefined
-        res['block_id'] = block_id
-        res['shape_id'] = shape_id
+        cls.set_not_none(res, 'block_id', block_id)
+        cls.set_not_none(res, 'shape_id', shape_id)
 
 class StopTime(Loader):
     filename = "stop_times.txt"
@@ -197,7 +212,7 @@ class StopTime(Loader):
         res['stop_id'] = stop_id
         res['stop_sequence'] = int(stop_sequence)
         assert(res['stop_sequence'] >= 0)
-        res['headsign'] = stop_headsign
+        cls.set_not_none(res, 'headsign', stop_headsign)
         def visit_type(s):
             if s == '1':
                 return StopTime.VisitType.unavailable
@@ -209,7 +224,7 @@ class StopTime(Loader):
                 return StopTime.VisitType.scheduled
         res['pickup_type'] = visit_type(pickup_type)
         res['drop_off_type'] = visit_type(drop_off_type)
-        res['shape_dist_travelled'] = shape_dist_travelled
+        cls.set_not_none(res, 'shape_dist_travelled', shape_dist_travelled)
 
 class Calendar(Loader):
     filename = 'calendar.txt'
@@ -275,7 +290,52 @@ class GTFS:
 
     def stop_times_for_trip_id(self, trip_id):
         return self.trip_stop_times[trip_id]
+    
+    @staticmethod
+    def _calc_bounds(latlng_fn):
+        "returns sw, ne, pass latlngfn which returns a generator with interesting latlngs"
+        minlat = min((t[0] for t in latlng_fn()))
+        maxlat = max((t[0] for t in latlng_fn()))
+        minlng = min((t[1] for t in latlng_fn()))
+        maxlng = max((t[1] for t in latlng_fn()))
+        return (minlat, minlng), (maxlat, maxlng)
+
+    def bounds(self):
+        def latlngs():
+            return itertools.chain((t.latlng for t in self.Shape), (t.latlng for t in self.Stop))
+        return self._calc_bounds(latlngs)
+    
+    def active_service_ids(self, dt):
+        day = Calendar.day_from_datetime(dt)
+        service_ids = set()
+        for cal in self.Calendar:
+            if day in cal.active:
+                service_ids.add(cal.service_id)
+        cal_dates = [t for t in self.CalendarDates if t.date == dt]
+        for cal_date in cal_dates:
+            if cal_date.exception == CalendarDates.ExceptionType.add:
+                service_ids.add(cal_date.service_id)
+            elif cal_date.exception == CalendarDates.ExceptionType.remove:
+                try:
+                    service_ids.remove(cal_date.service_id)
+                except KeyError:
+                    pass
+        return service_ids
+
+    def agency_routes(self, agency_id):
+        routes = {}
+        for route in self.Route:
+            if route.agency_id == agency_id:
+                routes[route.route_id] = route
+        return routes
+
+    def running_trips(self, routes, service_ids):
+        for trip in self.Trip:
+            if self.route_id in routes and self.service_id in service_ids:
+                yield trip
 
 if __name__ == '__main__':
     print("loading..", file=sys.stderr)
-    gtfs = GTFS(sys.argv[1])
+    transit = GTFS(sys.argv[1])
+    print("bounds: (lat,lng) ", transit.bounds())
+
